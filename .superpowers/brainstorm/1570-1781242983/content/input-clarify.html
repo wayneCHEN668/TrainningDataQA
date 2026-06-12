@@ -1,0 +1,76 @@
+<h2>Input Area Design</h2>
+<p class="subtitle">Text input + send button + suggested questions.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Fixed Bottom Bar</h3>
+      <p>Input area fixed at the bottom of the chat panel. Textarea auto-grows up to 4 rows. Send button on the right. Suggested questions shown above as clickable pills before first question.</p>
+      <div class="placeholder" style="margin-top:12px;background:#121212;padding:16px;border-radius:8px">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span style="background:#1f1f1f;padding:4px 12px;border-radius:999px;font-size:12px;color:#b3b3b3">本月各院系完成率</span>
+          <span style="background:#1f1f1f;padding:4px 12px;border-radius:999px;font-size:12px;color:#b3b3b3">未完成学员名单</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;border:1px solid #333;border-radius:12px;padding:8px 12px">
+          <span style="flex:1;color:#555;font-size:14px">输入你的问题...</span>
+          <span style="background:#1ed760;color:#121212;padding:6px 12px;border-radius:8px;font-size:13px">发送</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Centered Floating Input</h3>
+      <p>Input area centered and floating above bottom. Large rounded pill shape. Minimal chrome, full focus on the question.</p>
+      <div class="placeholder" style="margin-top:12px;background:#121212;padding:24px;border-radius:8px;text-align:center">
+        <div style="display:inline-flex;gap:8px;align-items:center;border:1px solid #555;border-radius:999px;padding:12px 20px;min-width:400px">
+          <span style="flex:1;color:#555;text-align:left">输入你的问题...</span>
+          <span style="background:#1ed760;color:#121212;width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center">↑</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="margin:40px 0;border-color:var(--border)">
+
+<h2>Clarification Options UI</h2>
+<p class="subtitle">When AI can't classify the intent, it shows 3 rephrased options + "None of these".</p>
+
+<div class="options">
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Button List</h3>
+      <p>3 clickable option buttons + "None of these" footer. Clicking an option submits it as the new question.</p>
+      <div class="placeholder" style="margin-top:12px;background:#181818;padding:16px;border-radius:8px">
+        <div style="color:#888;font-size:12px;margin-bottom:8px">我不太确定你的意思，你是想查：</div>
+        <div style="background:#1f1f1f;padding:10px 14px;border-radius:8px;margin-bottom:6px;cursor:pointer">1. 查询本月各院系的课件完成率</div>
+        <div style="background:#1f1f1f;padding:10px 14px;border-radius:8px;margin-bottom:6px;cursor:pointer">2. 查询本月未完成学习的学员名单</div>
+        <div style="background:#1f1f1f;padding:10px 14px;border-radius:8px;margin-bottom:8px;cursor:pointer">3. 查询本月学习进度的整体概况</div>
+        <div style="color:#f3727f;font-size:12px;cursor:pointer">都不是我想要的查询</div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Inline Chat Message</h3>
+      <p>Clarification appears as an AI message bubble with clickable embedded options. Feels natural in the conversation flow.</p>
+      <div class="placeholder" style="margin-top:12px;background:#121212;padding:16px;border-radius:8px">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1ed760;display:flex;align-items:center;justify-content:center;font-size:12px">AI</div>
+          <div style="background:#181818;border-radius:12px;padding:12px 16px;max-width:80%">
+            <div style="margin-bottom:8px">抱歉，我没有完全理解你的问题。你想查询的是：</div>
+            <div style="background:#252525;padding:8px 12px;border-radius:8px;margin-bottom:4px;border-left:3px solid #1ed760">📊 本月各院系课件完成率</div>
+            <div style="background:#252525;padding:8px 12px;border-radius:8px;margin-bottom:4px;border-left:3px solid #1ed760">📋 未完成学习学员名单</div>
+            <div style="background:#252525;padding:8px 12px;border-radius:8px;margin-bottom:8px;border-left:3px solid #1ed760">📈 学习进度整体概况</div>
+            <div style="color:#f3727f;font-size:12px">都不是我想要的 →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

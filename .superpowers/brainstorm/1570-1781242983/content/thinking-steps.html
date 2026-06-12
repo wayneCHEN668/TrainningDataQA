@@ -1,0 +1,48 @@
+<h2>Thinking Steps Visualization</h2>
+<p class="subtitle">How should the ReAct thought process look in the right panel?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Timeline Style</h3>
+      <p>Vertical timeline with icons. Each step shows: dot + tool name + brief result. Running step pulses, completed steps get green checkmark. Clean and scannable.</p>
+      <div class="placeholder" style="margin-top:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">🔵 Running: <strong>query_exam_performance</strong> — "通过率=61%..."</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">✅ <strong>search_course_or_exam</strong> — "反洗钱培训 → EXM001"</div>
+        <div style="display:flex;align-items:center;gap:8px">✅ <strong>query_completion_rate</strong> — "完成率=85%, 320人"</div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Accordion Cards</h3>
+      <p>Each step is a collapsible card. Header shows tool name + status. Expand to see full thought, params, and result. Good for detailed debugging.</p>
+      <div class="placeholder" style="margin-top:12px">
+        <div style="border:1px solid #333;border-radius:8px;padding:8px 12px;margin-bottom:6px">
+          <div style="font-weight:bold">🔵 Step 2: query_exam_performance</div>
+          <div style="font-size:12px;color:#888;margin-top:4px">scope_type=all, time_start=2026-01-01...</div>
+        </div>
+        <div style="border:1px solid #333;border-radius:8px;padding:8px 12px;margin-bottom:6px">
+          <div style="font-weight:bold;color:green">✅ Step 1: search_course_or_exam</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Minimalist Dot Chain</h3>
+      <p>Dots connected by lines. Hover to see tooltip with details. Minimal visual noise, maximum space for answer and charts.</p>
+      <div class="placeholder" style="margin-top:12px">
+        <div style="display:flex;align-items:center;gap:4px;font-size:20px">
+          <span style="color:green">●</span><span style="color:#555">─</span>
+          <span style="color:green">●</span><span style="color:#555">─</span>
+          <span style="color:#3b82f6">◉</span>
+          <span style="margin-left:8px;font-size:13px;color:#888">query_exam_performance</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

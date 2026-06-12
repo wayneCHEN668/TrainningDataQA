@@ -1,0 +1,63 @@
+<h2>Chat Message Bubble Design</h2>
+<p class="subtitle">Message bubbles + streaming text + charts in the chat panel.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Flat with Color Accent</h3>
+      <p>Minimal, no bubble backgrounds. User messages left-aligned, AI messages with a subtle green left border (Spotify Green). Dark background, clean spacing. Streaming text has a blinking cursor.</p>
+      <div class="placeholder" style="margin-top:12px;padding:16px;background:#121212;border-radius:8px">
+        <div style="color:#888;font-size:12px;margin-bottom:4px">You</div>
+        <div style="margin-bottom:16px">上季度反洗钱培训通过率为什么降了？</div>
+        <div style="color:#888;font-size:12px;margin-bottom:4px">AI</div>
+        <div style="border-left:3px solid #1ed760;padding-left:12px">本季度反洗钱培训通过率为 **61%**，较上季度下降 14 个百分点。主要原因：A 支行通过率仅 **34%**，拉低了整体均值<span style="background:#1ed760;color:#121212;padding:0 2px;animation:blink 1s infinite">|</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Card Bubbles</h3>
+      <p>Messages in distinct dark cards (#181818). User messages right-aligned, AI messages left-aligned with avatar. More traditional chat app feel.</p>
+      <div class="placeholder" style="margin-top:12px;padding:16px;background:#121212;border-radius:8px">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <div style="background:#1f1f1f;border-radius:12px;padding:10px 14px;max-width:70%">上季度反洗钱培训通过率为什么降了？</div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:12px">
+          <div style="width:28px;height:28px;border-radius:50%;background:#1ed760;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">AI</div>
+          <div style="background:#181818;border-radius:12px;padding:10px 14px;max-width:70%">本季度通过率 **61%**，较上季度下降 14 个百分点...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="margin:40px 0;border-color:var(--border)">
+
+<h2>Chart Display</h2>
+<p class="subtitle">Where should Recharts charts appear?</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline in Chat</h3>
+      <p>Charts render directly in the AI message, below the text. Scrolling keeps them in context.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>In Reasoning Panel</h3>
+      <p>Charts appear in the right panel, alongside the thinking steps. Separate from the conversation.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="e" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Both</h3>
+      <p>Charts in chat (contextual) AND larger version in reasoning panel (detail view).</p>
+    </div>
+  </div>
+</div>

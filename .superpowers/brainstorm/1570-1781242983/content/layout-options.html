@@ -1,0 +1,55 @@
+<h2>Dual-Column Layout Options</h2>
+<p class="subtitle">Left: Chat flow (messages, input). Right: Reasoning panel (thinking steps, charts, evidence).</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>60/40 Split</h3>
+      <p>Chat takes 60%, reasoning panel 40%. More room for conversation, less for steps.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>50/50 Split</h3>
+      <p>Equal space. Balanced for both reading answers and observing the AI's thinking process.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>70/30 Split</h3>
+      <p>Chat 70%, reasoning 30%. Chat-focused with a compact side panel for steps.</p>
+    </div>
+  </div>
+</div>
+
+<hr style="margin:40px 0;border-color:var(--border)">
+
+<h2>Reasoning Panel Mode</h2>
+<p class="subtitle">How should the right-side reasoning panel behave?</p>
+
+<div class="options">
+  <div class="option" data-choice="d" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Always Visible</h3>
+      <p>Panel is fixed on the right. Shows current thinking step in real-time as the AI works.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="e" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Auto-Expand / Collapse</h3>
+      <p>Panel is hidden until AI starts thinking, auto-expands. Collapses after answer is complete.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="f" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Togglable</h3>
+      <p>User can manually toggle panel visibility. Panel retains last state across questions.</p>
+    </div>
+  </div>
+</div>
