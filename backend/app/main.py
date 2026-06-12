@@ -6,6 +6,7 @@ from app.services.ai.schema_index import SchemaIndexService
 from app.jobs.scheduler import scheduler, register_jobs
 from app.schemas.health import HealthResponse
 from app.api.v1.auth import router as auth_router
+from app.api.v1.ai_query import router as ai_query_router
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app = FastAPI(
 
 
 app.include_router(auth_router)
+app.include_router(ai_query_router)
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
