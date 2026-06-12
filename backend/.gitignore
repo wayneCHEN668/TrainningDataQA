@@ -1,6 +1,11 @@
+.env
 __pycache__/
 *.pyc
 *.egg-info/
 *.egg
 .pytest_cache/
-.env
+node_modules/
+dist/
+build/
+.venv/
+venv/
