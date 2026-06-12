@@ -19,7 +19,13 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "openai>=1.0.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
 ]
+
+[tool.setuptools]
+packages = ["app", "app.services", "app.services.query", "app.services.ai", "app.schemas", "app.api", "app.api.v1", "app.core", "app.models", "app.jobs"]
 
 [project.optional-dependencies]
 dev = [
