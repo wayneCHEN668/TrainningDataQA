@@ -16,7 +16,11 @@ export function useAIQuery() {
       // 1. Close any existing EventSource connection
       esRef.current?.close();
 
-      // 2. Add user message
+      // 2. Reset session state (clears steps, charts, status, and error) -- must happen before adding messages
+      store.clearCurrentSession();
+      store.setStatus("idle");
+
+      // 3. Add user message
       store.addMessage({
         id: uid(),
         role: "user",
@@ -24,17 +28,13 @@ export function useAIQuery() {
         timestamp: Date.now(),
       });
 
-      // 3. Add AI placeholder message
+      // 4. Add AI placeholder message
       store.addMessage({
         id: uid(),
         role: "ai",
         content: "",
         timestamp: Date.now(),
       });
-
-      // 4. Reset session state (clears steps, charts, status, and error)
-      store.clearCurrentSession();
-      store.setStatus("idle");
 
       // 5. Build URL with token for auth
       const token = localStorage.getItem("access_token") || "";

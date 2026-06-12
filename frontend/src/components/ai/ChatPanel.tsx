@@ -38,7 +38,10 @@ export function ChatPanel() {
           <MessageList
             messages={messages}
             onClarificationSelect={selectClarification}
-            onClarificationNone={selectNoneOfThese}
+            onClarificationNone={() => {
+              const lastUser = [...messages].reverse().find((m) => m.role === "user");
+              selectNoneOfThese(lastUser?.content ?? "");
+            }}
           />
         )}
       </div>
