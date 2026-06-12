@@ -7,6 +7,7 @@ from app.jobs.refresh_wide_tables import (
     refresh_skill_error_summary,
     check_and_refresh_benchmark,
 )
+from app.jobs.evolution_job import run_daily_evolution
 
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 
@@ -59,5 +60,15 @@ def register_jobs() -> None:
         hour=3, minute=0,
         id="check_benchmark",
         name="检查基准统计是否需要刷新",
+        replace_existing=True,
+    )
+
+    # 每日进化报告：每天 02:00
+    scheduler.add_job(
+        run_daily_evolution,
+        trigger="cron",
+        hour=2, minute=0,
+        id="daily_evolution",
+        name="Generate daily evolution report",
         replace_existing=True,
     )
