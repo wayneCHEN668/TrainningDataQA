@@ -17,6 +17,7 @@ interface ChatState {
   addChart: (chart: ChartSpec) => void;
   setStatus: (status: ChatStatus) => void;
   setIntentLabel: (label: string) => void;
+  setError: (error: string) => void;
   toggleReasoningPanel: () => void;
   clearCurrentSession: () => void;
 }
@@ -63,6 +64,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setStatus: (status) => set({ status }),
 
   setIntentLabel: (label) => set({ intentLabel: label }),
+
+  setError: (error) => set({ error, status: "error" }),
 
   toggleReasoningPanel: () =>
     set((state) => ({ reasoningPanelVisible: !state.reasoningPanelVisible })),
