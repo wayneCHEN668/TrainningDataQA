@@ -1,0 +1,26 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 3306
+    DB_USERNAME: str = "ai_reader"
+    DB_PASSWORD: str = ""
+    DB_DATABASE: str = "skillcloud_v2"
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    REDIS_URL: str = "redis://localhost:6379/0"
+    SCHEMA_YAML_PATH: str = "../doc/db_table_index.yaml"
+    LLM_BASE_URL: str = "http://localhost:8000/v1"
+    LLM_MODEL: str = "qwen2.5-72b-instruct"
+    DASHSCOPE_API_KEY: str = ""
+    DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
+
+
+settings = Settings()
