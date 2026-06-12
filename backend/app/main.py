@@ -5,6 +5,7 @@ from app.core.redis import redis_pool
 from app.services.ai.schema_index import SchemaIndexService
 from app.jobs.scheduler import scheduler, register_jobs
 from app.schemas.health import HealthResponse
+from app.api.v1.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -37,6 +38,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+app.include_router(auth_router)
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)

@@ -1,0 +1,909 @@
+# ============================================================
+# SkillCloudHS v2.0 — AI 问答数据库表索引
+# 用途：供 AI 问答系统快速定位应查询的表，按需分层加载
+# 结构：
+#   SECTION 1 — 模块索引（始终注入 context，约 400 tokens）
+#   SECTION 2 — 表摘要（按模块加载，每表约 120 tokens）
+#   SECTION 3 — 框架表白名单（AI 禁止查询的系统表）
+# ============================================================
+
+
+# ============================================================
+# SECTION 1 — 模块索引（Layer 1，始终在 context）
+# 格式：模块名 | 负责回答的问题类型 | 包含的核心表
+# ============================================================
+
+MODULE_INDEX:
+
+  M1_组织架构:
+    answers: 机构信息、院系信息、专业信息、班级信息、岗位定义、学制学期
+    tables: org, department, major, class_group, position, curriculum, curriculum_term
+
+  M2_用户权限:
+    answers: 用户信息查询、角色权限、教师归属院系、管理员归属、学生所在班级、登录记录
+    tables: user_info, user_profile, role, feature, role_permission,
+            teacher_dept, teacher_class, admin_dept, student_class,
+            login_log, wechat_binding, push_device, app_version
+
+  M3_课程课件:
+    answers: 课程信息、课件信息、课件类型、课程下有哪些课件、班级学哪些课、个人课程分配、岗位课程
+    tables: course, course_category, courseware, courseware_type, courseware_resource,
+            skill_point, course_courseware, class_course, user_course,
+            position_course, user_course_auth
+
+  M4_学习记录:
+    answers: 学了多久、学了几次、技能点完成情况、操作错误在哪一步、学习会话得分
+    tables: study_session_log, skill_point_log, skill_error_log
+
+  M5_考试系统:
+    answers: 考试成绩、通过率、各题得分、哪道题错最多、考场信息、试卷构成
+    tables: exam_session, exam_enrollment, exam_answer, exam_paper,
+            paper_question, exam_paper_pool, question, question_option,
+            question_type, question_attachment, paper_attachment, question_option_img
+
+  M6_作业系统:
+    answers: 作业完成情况、提交率、教师批改情况、作业分数、谁没交作业
+    tables: assignment, assignment_class, assignment_submission,
+            assignment_resource, assignment_question, assignment_answer
+
+  M7_问答系统:
+    answers: 提问记录、回答情况、未回答问题数、课件内站内问答、语音问答
+    tables: platform_qa, qa_voice, courseware_qa, qa_question_type, qa_vote_log
+
+  M8_公告通知:
+    answers: 公告发布记录、推送消息发送状态、通知模板
+    tables: announcement, announcement_target, announcement_template,
+            push_notification_log
+
+  M9_统计数据:
+    answers: 日活、月活、机构每日学习人次、机构课程每日统计、课件学习时长统计
+    tables: org_daily_stats, org_monthly_stats, org_course_stats, courseware_study_stats
+    note: 这些是预聚合汇总表，查统计趋势优先用这里，不要聚合 study_session_log
+
+  M10_进度成绩:
+    answers: 完成率、完成了几个课件、综合成绩、考试成绩加权、作业成绩加权、是否结业
+    tables: learning_progress, course_grade
+    note: learning_progress 是进度快照（课件级），course_grade 是综合成绩（课程级）
+
+  M11_学习路径:
+    answers: 学习路径规划、AI 建议、路径进度、学习者画像、薄弱点
+    tables: learning_path, path_node, path_enrollment, ai_learning_plan, learner_profile
+
+
+# ============================================================
+# SECTION 2 — 表摘要（Layer 2，按模块加载）
+# 格式说明：
+#   row_meaning  一行代表什么（防止错误聚合）
+#   answers      触发该表的典型问题（越接近用户自然语言越好）
+#   key_fields   最常用字段及含义
+#   null_meaning 重要字段为 NULL 时的业务含义
+#   joins        常用 JOIN 关系
+#   caution      常见误用提醒
+# ============================================================
+
+TABLE_SUMMARIES:
+
+  # ── M1 组织架构 ──────────────────────────────────────────
+
+  org:
+    label: 机构/学校表
+    module: M1_组织架构
+    row_meaning: 一行 = 一个机构（学校或企业单位）
+    answers:
+      - 机构名称是什么 | 有哪些机构 | 机构编号
+      - 某机构的 app_id | 默认机构是哪个
+    key_fields:
+      org_code: 机构唯一编号（业务主键）
+      org_name: 机构名称
+      app_id: 平台应用ID（关联外部系统）
+    joins:
+      department(org_code): 该机构下的院系
+
+  department:
+    label: 一级单位/院系表
+    module: M1_组织架构
+    row_meaning: 一行 = 一个院系或部门（一级单位）
+    answers:
+      - 有哪些院系 | 哪个部门 | 一级单位名称
+      - 某院系属于哪个机构 | 院系编号
+    key_fields:
+      dept_code: 院系唯一编号（业务主键）
+      dept_name: 院系名称
+      org_code: 所属机构
+    joins:
+      major(dept_code): 该院系下的专业
+      teacher_dept(dept_code): 该院系的教师
+
+  major:
+    label: 二级单位/专业表
+    module: M1_组织架构
+    row_meaning: 一行 = 一个专业（二级单位）
+    answers:
+      - 有哪些专业 | 专业名称 | 某专业属于哪个院系
+    key_fields:
+      major_code: 专业唯一编号
+      major_name: 专业名称
+      dept_code: 所属院系
+      curriculum_code: 关联学制
+    joins:
+      class_group(major_code): 该专业下的班级
+
+  class_group:
+    label: 班级表（三级单位）
+    module: M1_组织架构
+    row_meaning: 一行 = 一个班级
+    answers:
+      - 有哪些班级 | 班级名称 | 某班级属于哪个专业
+      - 入学年份 | 哪个年级的班
+    key_fields:
+      class_code: 班级唯一编号（业务主键）
+      class_name: 班级名称
+      major_code: 所属专业
+      enroll_year: 入学年份
+    joins:
+      student_class(class_code): 班级里的学生
+      class_course(class_code): 班级学哪些课程
+
+  position:
+    label: 岗位表
+    module: M1_组织架构
+    row_meaning: 一行 = 一个岗位定义
+    answers:
+      - 岗位信息 | 有哪些岗位 | 岗位名称
+    key_fields:
+      position_code: 岗位唯一编号
+      position_name: 岗位名称
+      org_code: 所属机构
+
+  curriculum:
+    label: 学制表
+    module: M1_组织架构
+    row_meaning: 一行 = 一种学制（如三年制、两年制）
+    answers:
+      - 学制信息 | 总学期数 | 几年制
+    key_fields:
+      curriculum_code: 学制编号
+      total_terms: 总学期数
+
+  curriculum_term:
+    label: 学期表
+    module: M1_组织架构
+    row_meaning: 一行 = 某学制的某个学期
+    answers:
+      - 学期起止时间 | 第几学期 | 学期安排
+    key_fields:
+      curriculum_code: 所属学制
+      term_number: 第几学期
+      start_at: 学期开始时间
+      end_at: 学期结束时间
+
+  # ── M2 用户权限 ──────────────────────────────────────────
+
+  user_info:
+    label: 核心用户表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个用户（学生/教师/管理员/超管）
+    answers:
+      - 用户信息 | 姓名 | 工号学号 | 手机号
+      - 有多少学生/教师 | 某角色的人数
+      - 用户属于哪个班级/院系（通过 upper_code 关联）
+    key_fields:
+      user_id: 系统唯一用户标识（UUID）
+      user_code: 工号/学号（业务编号）
+      user_name: 姓名
+      role_level: 角色等级（0超管/1管理员/2教师/3学生）
+      mobile: 手机号
+      position_code: 岗位编号
+    joins:
+      user_profile(user_id): 扩展信息（性别、学历等）
+      student_class(user_id): 学生所在班级
+      teacher_dept(user_id): 教师所属院系
+
+  user_profile:
+    label: 用户扩展信息表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个用户的扩展档案（1:1 关联 user_info）
+    answers:
+      - 性别 | 学历 | 出生日期 | 地址 | 职务 | 最后登录时间
+      - 用户头像 | 个人简介
+    key_fields:
+      user_id: 关联 user_info.user_id
+      gender: 性别（1=男 2=女）
+      education: 学历
+      job_title: 职务
+      birthday: 出生日期
+      last_login_at: 最后登录时间
+
+  student_class:
+    label: 学生-班级归属表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个学生和其所在班级的归属关系（1:1）
+    answers:
+      - 某学生在哪个班 | 某班有哪些学生 | 班级人数
+    key_fields:
+      user_id: 学生 user_id
+      class_code: 所在班级编号
+    joins:
+      user_info(user_id): 学生信息
+      class_group(class_code): 班级信息
+    caution: 一个学生只有一条记录（1:1），查某班学生 COUNT 直接 WHERE class_code
+
+  teacher_dept:
+    label: 教师-院系归属表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个教师在一个院系的归属关系（1:N，教师可跨多院系）
+    answers:
+      - 某教师属于哪个院系 | 某院系有哪些教师 | 主讲老师是谁
+    key_fields:
+      user_id: 教师 user_id
+      dept_code: 所属院系
+      role_type: 角色类型（0=主讲 1=辅导）
+
+  teacher_class:
+    label: 教师-班级关联表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个教师与一个班级的授课关系
+    answers:
+      - 某教师带哪些班 | 某班的任课教师是谁 | 教师所带班级数
+    key_fields:
+      user_id: 教师 user_id
+      class_code: 班级编号
+
+  admin_dept:
+    label: 管理员-院系归属表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个管理员与其管辖院系的1:1绑定关系
+    answers:
+      - 某院系的管理员是谁 | 某管理员管哪个院系
+    key_fields:
+      user_id: 管理员 user_id
+      dept_code: 管辖的院系编号
+
+  login_log:
+    label: 用户登录日志
+    module: M2_用户权限
+    row_meaning: 一行 = 一次用户登录行为
+    answers:
+      - 登录次数 | 登录频率 | 日活 | 最近一次登录时间
+      - 有多少人今天登录了 | 某段时间内的活跃用户
+    key_fields:
+      user_id: 登录用户
+      logged_at: 登录时间
+      device_type: 设备类型（mobile/desktop）
+      ip_address: IP 地址
+    caution: 统计"日活/月活"优先用 org_daily_stats，login_log 用于明细或实时查询
+
+  wechat_binding:
+    label: 微信用户绑定表
+    module: M2_用户权限
+    row_meaning: 一行 = 一个平台用户与其微信账号的绑定关系
+    answers:
+      - 某用户绑定了微信吗 | 微信 openid 对应哪个用户
+    key_fields:
+      user_id: 平台用户 ID
+      openid: 微信小程序 openid
+      unionid: 微信 unionid
+
+  # ── M3 课程课件 ──────────────────────────────────────────
+
+  course:
+    label: 课程表
+    module: M3_课程课件
+    row_meaning: 一行 = 一门课程
+    answers:
+      - 课程名称 | 有哪些课程 | 课程描述 | 学分学时
+      - 某课程属于哪个分类 | 课程是否发布 | 培训周期
+    key_fields:
+      course_code: 课程业务编号（唯一，其他表的外键）
+      course_name: 课程名称
+      category_code: 所属分类
+      dept_code: 所属院系
+      credit: 学分
+      study_hours: 学时
+      is_published: 是否已发布（0=未发布 1=已发布）
+    joins:
+      course_category(category_code): 分类名称
+      course_courseware(course_code): 该课程包含的课件
+
+  course_category:
+    label: 课程分类表
+    module: M3_课程课件
+    row_meaning: 一行 = 一个课程分类节点（树形结构）
+    answers:
+      - 课程分类名称 | 有哪些分类 | 某分类下的课程数
+    key_fields:
+      category_code: 分类唯一编号
+      category_name: 分类名称
+      parent_code: 父分类（NULL=顶级）
+
+  courseware:
+    label: 课件库
+    module: M3_课程课件
+    row_meaning: 一行 = 一个课件（OC实操/视频/文档/外链/考试均在此）
+    answers:
+      - 课件名称 | 课件类型 | 有哪些课件 | 技能点数量
+      - 某课件的难度 | 课件是否审核 | 点击量
+    key_fields:
+      courseware_code: 课件业务编号（唯一）
+      courseware_key: 课件访问Key（OC类课件与外部平台交互用）
+      courseware_name: 课件名称
+      type_code: 课件类型（关联 courseware_type）
+      skill_point_count: 技能点总数（OC类课件）
+      is_reviewed: 是否已审核
+      click_count: 累计点击次数
+    null_meaning:
+      stopped_at: N/A（这字段在 study_session_log 里）
+    joins:
+      courseware_type(type_code): 类型名称和允许文件格式
+      course_courseware(courseware_code): 该课件属于哪些课程
+      skill_point(courseware_key): 该课件的技能点步骤
+
+  courseware_type:
+    label: 课件类型字典表
+    module: M3_课程课件
+    row_meaning: 一行 = 一种课件类型定义
+    answers:
+      - 课件类型有哪些 | 某类型允许上传什么格式 | 需要填URL吗
+    key_fields:
+      type_code: 类型代码（OC/DOC/PKG/VIDEO/LINK/EXAM）
+      type_name: 类型名称
+      allowed_file_types: 允许的文件扩展名（逗号分隔）
+      is_oc_type: 是否为OC实操类（1=是，启用技能点）
+
+  skill_point:
+    label: 技能点定义表
+    module: M3_课程课件
+    row_meaning: 一行 = OC课件的一个评分步骤定义
+    answers:
+      - 某课件有哪些技能点 | 技能点名称 | 步骤评分标准
+    key_fields:
+      courseware_key: 关联课件Key
+      step_index: 步骤序号（0开始）
+      score_config: 评分标准（JSON，含name和weight）
+    caution: 这是定义表不是记录表，查技能点"完成情况"要去 study_session_log 或 skill_point_log
+
+  course_courseware:
+    label: 课程-课件关联表（排课表）
+    module: M3_课程课件
+    row_meaning: 一行 = 一门课程包含一个课件的关联关系
+    answers:
+      - 某课程有哪些课件 | 某课件属于哪些课程 | 课件在课程里的排序
+    key_fields:
+      course_code: 课程编号
+      courseware_code: 课件编号
+      display_order: 展示排序
+
+  class_course:
+    label: 班级-课程关联表
+    module: M3_课程课件
+    row_meaning: 一行 = 一个班级被分配了一门课程
+    answers:
+      - 某班级学哪些课 | 某课程分配给了哪些班级 | 第几学期的课
+    key_fields:
+      class_code: 班级编号
+      course_code: 课程编号
+      term_number: 所属学期
+
+  user_course:
+    label: 用户-课程个人分配表
+    module: M3_课程课件
+    row_meaning: 一行 = 一个用户被单独分配了一门课程（补课/特殊分配场景）
+    answers:
+      - 某人有哪些个人分配的课程（不通过班级分配的）
+    key_fields:
+      user_id: 用户 ID
+      course_code: 课程编号
+    caution: 学员可以学习的课程来自三个来源：class_course（班级分配）+ user_course（个人分配）+ position_course（岗位分配），三者取并集
+
+  position_course:
+    label: 岗位-课程关联表
+    module: M3_课程课件
+    row_meaning: 一行 = 某个岗位被分配了一门课程
+    answers:
+      - 某岗位需要学哪些课程 | 某课程是哪些岗位的必修
+    key_fields:
+      position_code: 岗位编号
+      course_code: 课程编号
+
+  user_course_auth:
+    label: 用户课件授权表
+    module: M3_课程课件
+    row_meaning: 一行 = 一个用户被授权访问一个课件
+    answers:
+      - 某用户有权访问哪些课件 | 课件授权情况
+    key_fields:
+      user_id: 用户 ID
+      courseware_code: 课件编号
+
+  # ── M4 学习记录 ──────────────────────────────────────────
+
+  study_session_log:
+    label: 学习会话日志
+    module: M4_学习记录
+    row_meaning: 一行 = 学员的一次课件打开/学习会话（每次打开新增一行）
+    answers:
+      - 学了多长时间 | 单次学习时长 | 累计学习时长（SUM stopped_at - started_at）
+      - 学了几次 | 尝试次数 | 最近一次学习时间
+      - 本次得分 | 技能点完成到哪一步 | 错误次数
+      - 是否正在学习中 | 哪些人还没学完
+    key_fields:
+      user_id: 学员ID
+      courseware_key: 课件Key
+      course_code: 课程编号
+      session_score: 本次会话得分（0-100）
+      skill_scores: 技能点状态位串如"1101001"（OC课件）
+      started_at: 开始时间
+      stopped_at: 结束时间
+      error_count: 错误次数
+    null_meaning:
+      stopped_at: "NULL = 正在学习中（未结束）"
+    joins:
+      courseware(courseware_key): 课件名称和类型
+      user_info(user_id): 学员姓名、院系
+      course(course_code): 课程名称
+    caution: 统计累计时长需 SUM(TIMESTAMPDIFF(MINUTE, started_at, stopped_at))，忽略 stopped_at 为 NULL 的行
+
+  skill_point_log:
+    label: 技能点操作日志
+    module: M4_学习记录
+    row_meaning: 一行 = 学员对一个OC课件技能点步骤的一次操作结果
+    answers:
+      - 某步骤做对了吗 | 某步骤操作了几次 | 某步骤的错误次数
+      - 技能点操作的正确率 | 细粒度操作记录
+    key_fields:
+      user_id: 学员ID
+      courseware_code: 课件编号
+      course_code: 课程编号
+      step_index: 步骤序号
+      is_correct: 是否正确（1=正确）
+      correct_count: 该步骤累计做对次数
+      error_count: 该步骤累计错误次数
+      operated_at: 操作时间
+    caution: 这是细粒度操作日志，查"整体技能点错误分析"优先用 skill_error_log
+
+  skill_error_log:
+    label: 技能点错误日志（按年分区）
+    module: M4_学习记录
+    row_meaning: 一行 = 某学员在某课件的某个技能点步骤的错误记录（含错误次数）
+    answers:
+      - 哪个步骤错误最多 | 错误率最高的技能点 | 学员操作错误在哪里集中
+      - 技能点错误趋势 | 哪些学员在某步骤反复出错
+    key_fields:
+      user_id: 学员ID
+      courseware_code: 课件编号
+      step_index: 技能点步骤序号
+      error_count: 错误次数
+      occurred_at: 发生时间（分区键）
+    caution: 按年分区，查询时建议在 WHERE 中包含 occurred_at 时间范围以命中分区
+
+  # ── M5 考试系统 ──────────────────────────────────────────
+
+  exam_session:
+    label: 考试场次（考场）表
+    module: M5_考试系统
+    row_meaning: 一行 = 一个考场（一次组织的考试活动）
+    answers:
+      - 有哪些考试 | 考试名称 | 考试时间 | 考试状态
+      - 考试是否已开始/结束/停用 | 时间限制多少
+    key_fields:
+      exam_session_code: 考场唯一编号
+      session_name: 考场名称
+      open_at: 开放开始时间
+      close_at: 开放结束时间
+      status: 状态（0未开始/1进行中/2已终止/3已停用）
+      time_limit_seconds: 时间限制（0=不限）
+      grading_mode: 阅卷方式（0=自动/1=人工）
+
+  exam_enrollment:
+    label: 考生报名/考试记录表
+    module: M5_考试系统
+    row_meaning: 一行 = 一个学员参加一场考试的完整记录
+    answers:
+      - 通过率 | 有多少人参加考试 | 平均分 | 总成绩
+      - 谁还没交卷 | 谁没及格 | 考了几次 | 是否已公布成绩
+    key_fields:
+      exam_session_code: 考场编号
+      user_code: 考生编号
+      total_score: 总成绩
+      is_graded: 是否已批阅（0未批/1已批）
+      result_published: 成绩是否已公布
+      started_at: 开始答题时间
+      submitted_at: 交卷时间
+      attempt_number: 第几次考试
+    null_meaning:
+      started_at: "NULL = 已报名但尚未开始答题"
+      submitted_at: "NULL = 正在考试中（未交卷）"
+    joins:
+      exam_session(exam_session_code): 考场信息
+      exam_answer(enrollment_id): 该次考试每道题的作答
+
+  exam_answer:
+    label: 答题结果表
+    module: M5_考试系统
+    row_meaning: 一行 = 一名考生在一次考试中对一道题的作答记录
+    answers:
+      - 某题的得分 | 哪道题错误率最高 | 各题得分分布
+      - 主观题是否已批阅 | 作答内容
+    key_fields:
+      enrollment_id: 关联 exam_enrollment.id
+      question_code: 试题编号
+      earned_score: 该题得分
+      grading_status: 批阅状态（0未批/1已批）
+    joins:
+      question(question_code): 题目内容和类型
+
+  question:
+    label: 题库（试题）
+    module: M5_考试系统
+    row_meaning: 一行 = 题库中的一道试题
+    answers:
+      - 题目内容 | 有哪些题 | 按难度/类型筛选 | 某题的关键词
+    key_fields:
+      question_code: 试题唯一编号
+      type_code: 题型（JUDGE判断/SINGLE单选/MULTI多选/BLANK填空/SUBJ主观/OPER操作）
+      difficulty_level: 难度（1-5）
+      grading_type: 评分方式（0=自动/1=人工）
+      org_code: 所属机构
+
+  question_option:
+    label: 试题选项/答案表
+    module: M5_考试系统
+    row_meaning: 一行 = 某道题的一个选项或答案
+    answers:
+      - 某题的选项有哪些 | 正确答案是什么 | 各选项的作答统计
+    key_fields:
+      question_code: 关联试题编号
+      option_index: 选项序号（A=1 B=2...）
+      is_correct: 是否正确答案
+      correct_count: 被答对次数（统计用）
+      total_count: 被作答总次数（统计用）
+
+  exam_paper:
+    label: 试卷表
+    module: M5_考试系统
+    row_meaning: 一行 = 一套试卷定义
+    answers:
+      - 有哪些试卷 | 试卷名称 | 试卷题型配置 | 试卷状态
+    key_fields:
+      paper_key: 试卷唯一Key
+      paper_name: 试卷名称
+      status: 状态（0草稿/1发布）
+      org_code: 所属机构
+
+  paper_question:
+    label: 试卷-试题关联表
+    module: M5_考试系统
+    row_meaning: 一行 = 一套试卷包含一道试题
+    answers:
+      - 某试卷包含哪些题 | 每题分值是多少
+    key_fields:
+      paper_key: 试卷Key
+      question_code: 试题编号
+      score_config: 分值配置
+
+  # ── M6 作业系统 ──────────────────────────────────────────
+
+  assignment:
+    label: 作业信息表
+    module: M6_作业系统
+    row_meaning: 一行 = 一次作业的定义
+    answers:
+      - 有哪些作业 | 作业名称 | 截止日期 | 满分分值
+      - 某课程布置了哪些作业 | 作业是否关闭
+    key_fields:
+      assignment_code: 作业唯一编号
+      title: 作业标题
+      full_score: 满分分值
+      course_code: 关联课程
+      creator_id: 创建教师 user_id
+      submit_end: 截止提交日期
+      is_closed: 是否关闭
+
+  assignment_submission:
+    label: 作业提交与批改记录
+    module: M6_作业系统
+    row_meaning: 一行 = 一个学员对一次作业的提交与批改状态
+    answers:
+      - 提交率 | 谁提交了作业 | 谁没提交 | 平均分
+      - 批改了多少 | 谁还没批 | 教师评分 | 是否逾期提交
+    key_fields:
+      assignment_code: 作业编号
+      student_id: 学生 user_id
+      submitted_at: 提交时间
+      teacher_score: 教师评分
+      graded_at: 批阅时间
+      grader_id: 批阅教师
+      is_returned: 是否被退回重做
+    null_meaning:
+      submitted_at: "NULL = 尚未提交"
+      graded_at: "NULL = 已提交但尚未批阅"
+
+  assignment_class:
+    label: 作业-班级分配表
+    module: M6_作业系统
+    row_meaning: 一行 = 一次作业被分配给一个班级
+    answers:
+      - 某作业分配给了哪些班 | 某班有哪些作业
+    key_fields:
+      assignment_code: 作业编号
+      class_code: 班级编号
+
+  # ── M7 问答系统 ──────────────────────────────────────────
+
+  platform_qa:
+    label: 平台问答统一表
+    module: M7_问答系统
+    row_meaning: 一行 = 学员的一个提问及其回答（含待回答/已回答/已归档）
+    answers:
+      - 有多少未回答的问题 | 问题回答率 | 提问最多的课件
+      - 某用户的提问记录 | 平均回复时间 | 用户评价
+    key_fields:
+      qa_code: 问题唯一编号
+      asker_id: 提问用户ID
+      courseware_key: 关联课件Key
+      asked_at: 提问时间
+      replied_at: 回复时间
+      state: 状态（0待回答/1已回答/2已读归档）
+      rating: 评价（0未评/1有帮助/-1无帮助）
+
+  courseware_qa:
+    label: 课件内站内问答表
+    module: M7_问答系统
+    row_meaning: 一行 = 在某课件学习页面内的一个提问（站内问答）
+    answers:
+      - 课件内的问题 | 站内答疑记录 | 有效问题标记
+    key_fields:
+      course_code: 课程编号
+      courseware_code: 课件编号
+      asker_id: 提问者
+      is_verified: 有效问题标记
+
+  # ── M8 公告通知 ──────────────────────────────────────────
+
+  announcement:
+    label: 公告内容表
+    module: M8_公告通知
+    row_meaning: 一行 = 一条公告
+    answers:
+      - 有哪些公告 | 公告内容 | 发布时间 | 是否已过期
+    key_fields:
+      notice_code: 公告唯一编号
+      title: 标题
+      org_code: 所属机构
+      published_at: 发布时间
+      expires_at: 过期时间（NULL=永久）
+
+  push_notification_log:
+    label: 推送消息发送记录
+    module: M8_公告通知
+    row_meaning: 一行 = 一条推送消息的发送记录
+    answers:
+      - 推送成功率 | 发送失败情况 | 某类消息的发送量 | 重试次数
+    key_fields:
+      user_id: 接收用户
+      biz_type: 业务类型（qa_reply/assignment/exam等）
+      status: 状态（0待发/1成功/2失败）
+      fail_reason: 失败原因
+      retry_count: 重试次数
+
+  # ── M9 统计数据 ──────────────────────────────────────────
+
+  org_daily_stats:
+    label: 机构日统计汇总
+    module: M9_统计数据
+    row_meaning: 一行 = 某机构某天的全量学习统计（预聚合，每日生成）
+    answers:
+      - 日活 | 某天学习人次 | 每日学习时长 | 登录次数
+      - 学习趋势 | 技能点完成数 | 考试完成人次
+      - 日均提问回答数
+    key_fields:
+      org_code: 机构编号
+      stat_date: 统计日期
+      study_sessions: 当日学习人次
+      total_study_minutes: 学习总时长（分钟）
+      active_users: 活跃用户数（去重）
+      courseware_completed: 课件完成数
+      exam_completed: 考试完成人次
+      login_times: 登录总次数
+    caution: 优先用此表查日活和趋势，比聚合 study_session_log 快 100 倍
+
+  org_monthly_stats:
+    label: 机构月统计汇总
+    module: M9_统计数据
+    row_meaning: 一行 = 某应用在某月的统计（月首日存储）
+    answers:
+      - 月活 | 月均学习时长 | 月均完成课件数 | 月度趋势
+    key_fields:
+      app_id: 应用ID
+      stat_month: 统计月份（当月1日）
+      active_users: 活跃用户数
+      avg_study_minutes: 人均学习时长
+      avg_courseware_done: 人均完成课件数
+
+  org_course_stats:
+    label: 机构-课程日统计
+    module: M9_统计数据
+    row_meaning: 一行 = 某机构在某课程某天的学习统计
+    answers:
+      - 某课程的每日学习人数 | 某课程的完成趋势 | 哪门课最受欢迎
+    key_fields:
+      org_code: 机构编号
+      course_code: 课程编号
+      stat_date: 统计日期
+      completions: 完成人次
+      active_learners: 活跃学习人数
+
+  courseware_study_stats:
+    label: 课件学习时长统计
+    module: M9_统计数据
+    row_meaning: 一行 = 某课件某天的学习时长统计
+    answers:
+      - 某课件的学习时长 | 课件热度 | 哪个课件花时间最多
+    key_fields:
+      courseware_key: 课件Key
+      total_minutes: 总访问时长
+      study_minutes: 有效学习时长
+      stat_date: 统计日期
+
+  # ── M10 进度成绩 ──────────────────────────────────────────
+
+  learning_progress:
+    label: 学习进度快照
+    module: M10_进度成绩
+    row_meaning: 一行 = 一个学员在一门课程中一个课件的最新完成状态（异步更新）
+    answers:
+      - 完成率 | 完成了几个课件 | 哪些课件还没学 | 是否已完成
+      - 最高分/最近一次得分 | 学了几次 | 多少分钟
+    key_fields:
+      user_id: 学员ID
+      course_code: 课程编号
+      courseware_code: 课件编号
+      status: 完成状态（0未开始/1学习中/2已完成）
+      best_score: 历史最高得分
+      last_score: 最近一次得分
+      attempt_count: 学习次数
+      completed_at: 完成时间（NULL=未完成）
+    null_meaning:
+      completed_at: "NULL = 该课件尚未完成"
+    caution: |
+      查某课程的完成率 = COUNT(status=2) / COUNT(*) WHERE course_code = ?
+      查某学员完成了多少课件 = COUNT(status=2) WHERE user_id = ? AND course_code = ?
+
+  course_grade:
+    label: 课程综合成绩表
+    module: M10_进度成绩
+    row_meaning: 一行 = 一个学员在一门课程的综合成绩（课件+考试+作业加权汇总）
+    answers:
+      - 综合成绩 | 总分 | 是否结业 | 成绩等级
+      - 课件得分/考试得分/作业得分各是多少 | 课件完成率
+      - 谁结业了 | 不及格的有哪些 | 平均综合分
+    key_fields:
+      user_id: 学员ID
+      course_code: 课程编号
+      class_code: 所在班级（冗余，方便报表）
+      courseware_score: 课件完成得分
+      exam_score: 考试得分（取最高次）
+      assignment_score: 作业平均得分
+      total_score: 综合总分
+      grade_rank: 等级（优/良/中/及格/不及格）
+      is_passed: 是否结业通过（1=是）
+      completion_rate: 课件完成率（%）
+    caution: 这是预计算的汇总表，是查综合成绩的首选，不要实时JOIN三张表计算
+
+  # ── M11 学习路径 ──────────────────────────────────────────
+
+  learner_profile:
+    label: 学习者画像
+    module: M11_学习路径
+    row_meaning: 一行 = 一个学员的学习行为画像（定期聚合）
+    answers:
+      - 平均学习时长 | 偏好学习时段 | 学习节奏 | 参与度评分
+      - 薄弱领域 | 擅长领域 | 技能点掌握情况
+    key_fields:
+      user_id: 学员ID
+      avg_session_minutes: 平均单次学习时长
+      preferred_time_slots: 偏好时段（JSON）
+      avg_completion_rate: 平均完成率
+      weak_domains: 薄弱领域（JSON数组）
+      strong_domains: 擅长领域（JSON数组）
+      engagement_score: 参与度评分（0-100）
+      profile_summary: LLM生成的自然语言画像摘要
+
+  learning_path:
+    label: 学习路径定义表
+    module: M11_学习路径
+    row_meaning: 一行 = 一条学习路径的定义（可以是模板或个人路径）
+    answers:
+      - 学习路径名称 | 目标岗位 | 预计完成天数 | 是否AI生成
+    key_fields:
+      path_code: 路径唯一编号
+      path_name: 路径名称
+      target_position: 目标岗位
+      source_type: 来源（0手动/1AI生成/2AI优化）
+      estimated_days: 预计完成天数
+
+  path_node:
+    label: 路径节点（课程序列）
+    module: M11_学习路径
+    row_meaning: 一行 = 一条学习路径的一个节点（对应一门课程）
+    answers:
+      - 某路径包含哪些课程 | 节点顺序 | 某节点的解锁条件
+    key_fields:
+      path_code: 所属路径
+      node_seq: 节点顺序
+      course_code: 关联课程
+      is_mandatory: 是否必修
+
+  path_enrollment:
+    label: 用户路径注册与进度
+    module: M11_学习路径
+    row_meaning: 一行 = 一个学员注册了一条学习路径的进度记录
+    answers:
+      - 某学员的学习路径进度 | 当前在第几个节点 | 整体完成率
+      - AI预测完成时间 | 路径状态（进行中/完成/放弃）
+    key_fields:
+      user_id: 学员ID
+      path_code: 路径编号
+      current_node_seq: 当前节点序号
+      status: 状态（0进行中/1已完成/2已放弃）
+      overall_progress: 整体完成率（%）
+      ai_predicted_done: AI预测完成时间
+
+  ai_learning_plan:
+    label: AI学习规划记录
+    module: M11_学习路径
+    row_meaning: 一行 = 一次LLM规划介入的完整记录（输入/输出/反馈）
+    answers:
+      - AI给了哪些建议 | 用户是否接受了建议 | 规划触发原因
+      - 技能缺口分析内容
+    key_fields:
+      user_id: 学员ID
+      trigger_type: 触发类型（0初始/1里程碑/2用户请求）
+      llm_suggestion_text: LLM自然语言建议
+      feedback_status: 反馈（0未反馈/1接受/2拒绝）
+
+
+# ============================================================
+# SECTION 3 — 框架表白名单（AI 禁止查询）
+# ============================================================
+
+AI_FORBIDDEN_TABLES:
+  - cache
+  - cache_locks
+  - failed_jobs
+  - job_batches
+  - jobs
+  - migrations
+  - password_reset_tokens
+  - personal_access_tokens
+  - sessions
+  - users   # Laravel 默认 users 表，业务用 user_info
+
+
+# ============================================================
+# SECTION 4 — 意图到模块的快速映射（意图识别后直接路由）
+# ============================================================
+
+INTENT_MODULE_ROUTING:
+  COMPLETION_RATE_QUERY:      [M3_课程课件, M4_学习记录, M10_进度成绩]
+  INCOMPLETE_LEARNER_QUERY:   [M10_进度成绩, M2_用户权限, M3_课程课件]
+  LEARNING_PROGRESS_QUERY:    [M10_进度成绩, M4_学习记录]
+  LEARNING_DURATION_QUERY:    [M4_学习记录, M9_统计数据]
+  EXAM_SCORE_QUERY:           [M5_考试系统]
+  EXAM_PASS_RATE_QUERY:       [M5_考试系统]
+  SKILL_ERROR_QUERY:          [M4_学习记录, M3_课程课件]
+  COMPREHENSIVE_GRADE_QUERY:  [M10_进度成绩]
+  PERFORMANCE_RANKING_QUERY:  [M10_进度成绩, M5_考试系统]
+  LEARNING_TREND_QUERY:       [M9_统计数据, M4_学习记录]
+  ORG_OVERVIEW_QUERY:         [M9_统计数据, M10_进度成绩]
+  ORG_COMPARISON_QUERY:       [M9_统计数据, M10_进度成绩, M1_组织架构]
+  AT_RISK_LEARNER_QUERY:      [M10_进度成绩, M5_考试系统, M2_用户权限]
+  COMPLIANCE_RISK_QUERY:      [M10_进度成绩, M5_考试系统, M3_课程课件]
+  INDIVIDUAL_PROFILE_QUERY:   [M11_学习路径, M10_进度成绩, M2_用户权限]
+  ROOT_CAUSE_ANALYSIS:        [M9_统计数据, M10_进度成绩, M4_学习记录, M5_考试系统]
+  ANOMALY_INVESTIGATION:      [M9_统计数据, M4_学习记录]
+  COMPARATIVE_DIAGNOSIS:      [M10_进度成绩, M9_统计数据, M1_组织架构]
+  COMPLETION_PREDICTION:      [M10_进度成绩, M9_统计数据]
+  RISK_PREDICTION:            [M10_进度成绩, M5_考试系统]
+  IMPROVEMENT_SUGGESTION:     [M10_进度成绩, M9_统计数据, M4_学习记录]
+  TRAINING_PLANNING:          [M3_课程课件, M10_进度成绩, M11_学习路径]
