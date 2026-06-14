@@ -102,6 +102,10 @@ export function useAIQuery() {
       case "done":
         store.setStatus("done");
         abortRef.current?.abort();
+        // Capture the backend-generated session_id for feedback
+        if (data.session_id) {
+          store.setLastSessionId(data.session_id);
+        }
         // Finalize the round: save steps/charts to message and archive
         store.finalizeRound();
         // Persist to localStorage for next turn
@@ -312,9 +316,10 @@ export function useAIQuery() {
   );
 
   const sendFeedback = useCallback(
-    async (messageId: string, question: string, answer: string, feedbackType: string) => {
+    async (_messageId: string, question: string, answer: string, feedbackType: string) => {
       const token = localStorage.getItem("access_token") || "";
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+      const sessionId = useChatStore.getState().lastSessionId;
       try {
         await fetch(`${baseUrl}/ai-query/feedback`, {
           method: "POST",
@@ -323,7 +328,7 @@ export function useAIQuery() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            session_id: messageId,
+            session_id: sessionId,
             question,
             answer,
             feedback_type: feedbackType,

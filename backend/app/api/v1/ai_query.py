@@ -46,7 +46,9 @@ async def ai_query(
 
     async def event_stream():
         import sys
+        import uuid
         start = time.monotonic()
+        session_id = uuid.uuid4().hex[:16]
         modules_used = []
         tools_used = []
         total_steps = 0
@@ -131,6 +133,7 @@ async def ai_query(
         yield format_sse("done", {
             "total_steps": total_steps,
             "duration_ms": duration_ms,
+            "session_id": session_id,
         })
 
         # [7] Background: log to qa_session_log (analytics, fire-and-forget)
@@ -138,7 +141,7 @@ async def ai_query(
             try:
                 async with AsyncSessionLocal() as bg_db:
                     await log_qa_session(
-                        bg_db, "", current_user.user_id,
+                        bg_db, session_id, current_user.user_id,
                         current_user.dept_code or "", q,
                         intent_result.intent, intent_result.complexity,
                         modules_used, tools_used, total_steps, duration_ms, 0,
