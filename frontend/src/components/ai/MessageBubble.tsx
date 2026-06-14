@@ -1,13 +1,59 @@
 import type { Message, ClarificationOption } from "../../types/chat";
 import { ClarificationOptions } from "./ClarificationOptions";
-import { FeedbackButtons } from "./FeedbackButtons";
+import { MessageActions } from "./MessageActions";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface MessageBubbleProps {
   message: Message;
   onClarificationSelect?: (option: ClarificationOption) => void;
   onClarificationNone?: () => void;
-  onFeedback?: (positive: boolean) => void;
+  onFeedback?: (type: "like" | "dislike" | "wrong") => void;
   showFeedback?: boolean;
+}
+
+/**
+ * Replace chart placeholder markdown with a styled text reference.
+ * ![数据图表](chart_xxx) → 📊 数据图表（请查看右侧面板）
+ * Charts are rendered in the ReasoningPanel instead.
+ */
+const CHART_PLACEHOLDER_RE = /^\s*!\[([^\]]*)\]\(chart_[a-zA-Z][a-zA-Z0-9_]*\)\s*$/gm;
+
+/** Strip ReAct format artifacts and truncate at "Final Answer:" boundary. */
+function cleanReactArtifacts(content: string): string {
+  // Truncate everything from "Final Answer:" onward — the LLM already
+  // streamed the natural-language answer before the ReAct marker.
+  const faIdx = content.search(/(?:^|\n)\s*Final Answer:\s*/im);
+  if (faIdx !== -1) {
+    content = content.slice(0, faIdx);
+  }
+  return content
+    .replace(/^\s*(Thought|Action|Observation):\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function replaceChartPlaceholders(content: string): string {
+  return content
+    .replace(CHART_PLACEHOLDER_RE, (_match, alt: string) => {
+      const label = alt || "数据图表";
+      // Trailing newline terminates the blockquote so following text stays outside
+      return `> 📊 **${label}**（请在右侧思考面板查看）\n`;
+    })
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Render AI response markdown as HTML, with chart placeholders replaced by text references. */
+function renderMarkdownContent(content: string): React.ReactNode {
+  const processed = cleanReactArtifacts(replaceChartPlaceholders(content));
+  return (
+    <div className="markdown-body text-sm">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {processed}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 export function MessageBubble({
@@ -53,9 +99,7 @@ export function MessageBubble({
           }`}
         >
           {hasContent ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-              {message.content}
-            </p>
+            renderMarkdownContent(message.content)
           ) : (
             !hasClarifications && (
               <div className="flex items-center gap-1">
@@ -78,10 +122,13 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* Feedback buttons */}
+        {/* Message actions (copy + feedback) */}
         {showFeedback && onFeedback && (
           <div className="mt-1 ml-1">
-            <FeedbackButtons onFeedback={onFeedback} />
+            <MessageActions
+              content={message.content}
+              onFeedback={onFeedback}
+            />
           </div>
         )}
 
