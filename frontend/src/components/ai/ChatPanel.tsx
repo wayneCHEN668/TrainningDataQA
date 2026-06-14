@@ -8,7 +8,7 @@ import { SuggestedQuestions } from "./SuggestedQuestions";
 export function ChatPanel() {
   const [input, setInput] = useState("");
   const { messages, status } = useChatStore();
-  const { submit, cancel, selectClarification, selectNoneOfThese } = useAIQuery();
+  const { submit, cancel, selectClarification, selectNoneOfThese, sendFeedback } = useAIQuery();
   const isRunning = status === "thinking" || status === "streaming";
 
   const handleSend = () => {
@@ -31,7 +31,7 @@ export function ChatPanel() {
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-text-subdued text-lg">
-              Ask a question about your training data
+              向您的训练数据提问
             </p>
           </div>
         ) : (
@@ -42,13 +42,12 @@ export function ChatPanel() {
               const lastUser = [...messages].reverse().find((m) => m.role === "user");
               selectNoneOfThese(lastUser?.content ?? "");
             }}
+            onFeedback={(messageId, question, answer, type) => {
+              sendFeedback(messageId, question, answer, type);
+            }}
           />
         )}
       </div>
-      {/* Suggested questions */}
-      {status === "idle" && messages.length === 0 && (
-        <SuggestedQuestions onSelect={(q) => { setInput(q); submit(q); }} />
-      )}
       {/* Input area */}
       <div className="sticky bottom-0 p-4 bg-bg-deepest border-t border-border">
         <div className="flex gap-2 items-end max-w-3xl mx-auto">
@@ -56,7 +55,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Enter your question..."
+            placeholder="请输入您的问题..."
             rows={1}
             className="flex-1 resize-none bg-bg-card text-text-primary rounded-xl px-4 py-3
                        border border-border focus:outline-none focus:border-[#1ed760]
