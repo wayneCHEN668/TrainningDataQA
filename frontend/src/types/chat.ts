@@ -10,6 +10,7 @@ export interface ThinkingStep {
 export interface ChartSpec {
   chartId: string;
   chartType: "bar" | "line" | "pie";
+  title?: string;
   rechartsSpec: Record<string, unknown>;
 }
 
@@ -30,3 +31,5 @@ export interface Message {
 }
 
 export type ChatStatus = "idle" | "thinking" | "streaming" | "done" | "error";
+
+export type FeedbackType = "like" | "dislike" | "wrong";
