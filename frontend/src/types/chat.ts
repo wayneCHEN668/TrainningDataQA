@@ -20,6 +20,21 @@ export interface ClarificationOption {
   intent: string;
 }
 
+export interface SheetMeta {
+  name: string;
+  rows: number;
+  columns: number;
+}
+
+export interface DownloadInfo {
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  sheets: SheetMeta[];
+  totalRows: number;
+  totalColumns: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "ai" | "system";
@@ -27,6 +42,7 @@ export interface Message {
   timestamp: number;
   steps?: ThinkingStep[];
   charts?: ChartSpec[];
+  downloads?: DownloadInfo[];       // 报表下载信息
   clarificationOptions?: ClarificationOption[];
 }
 

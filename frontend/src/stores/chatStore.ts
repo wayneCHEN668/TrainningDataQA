@@ -1,10 +1,11 @@
 import { create } from "zustand";
-import type { Message, ThinkingStep, ChartSpec, ChatStatus } from "../types/chat";
+import type { Message, ThinkingStep, ChartSpec, ChatStatus, DownloadInfo } from "../types/chat";
 
 export interface Round {
   question: string;
   steps: ThinkingStep[];
   charts: ChartSpec[];
+  downloads: DownloadInfo[];
   intentLabel: string;
 }
 
@@ -13,6 +14,7 @@ interface ChatState {
   status: ChatStatus;
   currentSteps: ThinkingStep[];
   currentCharts: ChartSpec[];
+  currentDownloads: DownloadInfo[];
   intentLabel: string;
   reasoningPanelVisible: boolean;
   error: string | null;
@@ -24,6 +26,8 @@ interface ChatState {
   addStep: (step: ThinkingStep) => void;
   updateStep: (stepNo: number, updater: Partial<ThinkingStep>) => void;
   addChart: (chart: ChartSpec) => void;
+  addDownload: (d: DownloadInfo) => void;
+  clearCurrentDownloads: () => void;
   setStatus: (status: ChatStatus) => void;
   setIntentLabel: (label: string) => void;
   setError: (error: string) => void;
@@ -39,6 +43,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   status: "idle",
   currentSteps: [],
   currentCharts: [],
+  currentDownloads: [],
   intentLabel: "",
   reasoningPanelVisible: true,
   error: null,
@@ -75,6 +80,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentCharts: [...state.currentCharts, chart],
     })),
 
+  addDownload: (d) =>
+    set((s) => ({ currentDownloads: [...s.currentDownloads, d] })),
+
+  clearCurrentDownloads: () => set({ currentDownloads: [] }),
+
   setStatus: (status) => set({ status }),
 
   setIntentLabel: (label) => set({ intentLabel: label }),
@@ -106,12 +116,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
         question: lastUser?.content ?? "",
         steps: state.currentSteps,
         charts: state.currentCharts,
+        downloads: state.currentDownloads,
         intentLabel: state.intentLabel,
       };
       set({
         rounds: [...state.rounds, archivedRound],
         currentSteps: [],
         currentCharts: [],
+        currentDownloads: [],
         intentLabel: "",
         status: "idle",
         error: null,
@@ -120,6 +132,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         currentSteps: [],
         currentCharts: [],
+        currentDownloads: [],
         intentLabel: "",
         status: "idle",
         error: null,
@@ -134,9 +147,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       question: lastUser?.content ?? "",
       steps: state.currentSteps,
       charts: state.currentCharts,
+      downloads: state.currentDownloads,
       intentLabel: state.intentLabel,
     };
-    // Also save steps to the last AI message
+    // Also save steps and charts to the last AI message
     const messages = [...state.messages];
     const lastAiIdx = messages.length - 1;
     if (lastAiIdx >= 0 && messages[lastAiIdx].role === "ai") {
@@ -144,6 +158,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...messages[lastAiIdx],
         steps: state.currentSteps,
         charts: state.currentCharts,
+        downloads: state.currentDownloads.length > 0
+          ? [...state.currentDownloads]
+          : messages[lastAiIdx].downloads,
       };
     }
     set({
@@ -152,6 +169,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Clear current round data to avoid duplicate display in ReasoningPanel
       currentSteps: [],
       currentCharts: [],
+      currentDownloads: [],
       intentLabel: "",
     });
   },

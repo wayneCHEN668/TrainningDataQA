@@ -93,6 +93,17 @@ export function useAIQuery() {
         store.addChart(data);
         break;
 
+      case "download_ready":
+        useChatStore.getState().addDownload({
+          fileName: data.file_name,
+          fileUrl: data.file_url,
+          fileSize: data.file_size,
+          sheets: data.sheets || [],
+          totalRows: data.total_rows,
+          totalColumns: data.total_columns,
+        });
+        break;
+
       case "evidence":
         // Steps are already populated via step_start/step_done events
         // with correct camelCase field mapping. Skip overwriting with
