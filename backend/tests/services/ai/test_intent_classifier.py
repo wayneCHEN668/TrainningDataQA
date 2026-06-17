@@ -30,7 +30,7 @@ def user_ctx():
     )
 
 
-# --- Pydantic model tests (5 tests) ---
+# --- Pydantic model tests (8 tests) ---
 
 class TestIntentResult:
     def test_valid_full_json(self):
@@ -77,11 +77,23 @@ class TestIntentResult:
         assert slot.scope_name == "海淀支行"
         assert slot.top_n == 20
 
+    def test_output_mode_defaults_to_analysis(self):
+        result = IntentResult(intent="EXAM_PASS_RATE_QUERY")
+        assert result.output_mode == "analysis"
+
+    def test_output_mode_can_be_set_to_report(self):
+        result = IntentResult(intent="EXAM_PASS_RATE_QUERY", output_mode="report")
+        assert result.output_mode == "report"
+
+    def test_output_mode_rejects_invalid_values(self):
+        with pytest.raises((ValueError, Exception)):
+            IntentResult(intent="EXAM_PASS_RATE_QUERY", output_mode="invalid")
+
 
 # --- Intent definitions tests (4 tests) ---
 
 class TestIntentDefinitions:
-    def test_22_intents(self):
+    def test_27_intents(self):
         assert len(INTENT_DEFINITIONS) == 27
 
     def test_no_duplicate_intents(self):

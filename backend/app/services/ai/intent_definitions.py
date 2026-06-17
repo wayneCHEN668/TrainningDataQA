@@ -1,4 +1,4 @@
-"""26 intent definitions for the intent classifier."""
+"""27 intent definitions for the intent classifier."""
 
 INTENT_DEFINITIONS = [
     {"intent": "COMPLETION_RATE_QUERY",    "label": "完成率查询",    "complexity": "simple",   "keywords": "完成率/完成情况/没完成"},
@@ -33,7 +33,7 @@ INTENT_DEFINITIONS = [
 
 def get_intent_list_for_prompt() -> str:
     """Format 26 intents as a prompt-friendly table."""
-    lines = ["## Supported Intents (26 total)"]
+    lines = ["## Supported Intents (27 total)"]
     for d in INTENT_DEFINITIONS:
         lines.append(
             f"- {d['intent']} | {d['label']} | complexity={d['complexity']} | triggers: {d['keywords']}"
@@ -42,5 +42,5 @@ def get_intent_list_for_prompt() -> str:
 
 
 def get_intent_enum_values() -> list[str]:
-    """Return all 22 intent codes for JSON schema enum constraint."""
+    """Return all 27 intent codes for JSON schema enum constraint."""
     return [d["intent"] for d in INTENT_DEFINITIONS]

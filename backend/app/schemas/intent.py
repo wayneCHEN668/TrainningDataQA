@@ -47,7 +47,7 @@ class IntentResult(BaseModel):
     slots: SlotValues = Field(default_factory=SlotValues)
     need_clarification: bool = Field(default=False)
     clarification_question: str | None = Field(default=None)
-    output_mode: str = Field(default="analysis", description="analysis | report")
+    output_mode: str = Field(default="analysis", pattern=r"^(analysis|report)$", description="analysis | report")
 
 
 class ClarificationOption(BaseModel):
