@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
     REDIS_URL: str = "redis://localhost:6379/0"
     SCHEMA_YAML_PATH: str = "../doc/db_table_index.yaml"
+
+    # Excel report storage
+    REPORT_DIR: str = "./data/reports"
+    REPORT_TTL_HOURS: int = 24
+
     # LLM 通用配置
     LLM_BASE_URL: str = "http://localhost:8000/v1"
     LLM_API_KEY: str = "not-needed"
