@@ -1,6 +1,7 @@
 """Intent classifier: LLM Call #1 with dual-layer fallback."""
 import asyncio
 import logging
+import time
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 from app.core.config import settings
@@ -25,7 +26,15 @@ def _build_json_schema() -> dict:
             "slots": {
                 "type": "object",
                 "properties": {
-                    "time_range": {"type": "object"},
+                    "time_range": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "enum": ["today", "this_week", "this_month", "last_month", "this_quarter", "this_year", "custom"]},
+                            "start": {"type": ["string", "null"]},
+                            "end": {"type": ["string", "null"]},
+                        },
+                        "required": ["type"],
+                    },
                     "scope_type": {"type": "string"},
                     "scope_name": {"type": ["string", "null"]},
                     "course_name": {"type": ["string", "null"]},
@@ -82,53 +91,33 @@ class IntentClassifier:
         module_index = self._schema_svc.get_module_index_text()
         system_prompt = self._prompt.build(module_index, user_ctx)
 
-        # Layer 1: json_schema strict mode
-        result = await self._call_with_schema(system_prompt, question)
-        if result:
-            return result
+        print(f"[IntentClassifier] LLM Base URL: {settings.LLM_BASE_URL}", flush=True)
+        print(f"[IntentClassifier] LLM Model: {self._model}", flush=True)
 
-        # Layer 2: json_object mode
+        # Layer 1 (json_schema strict mode) removed — not supported by DeepSeek/大多数模型
+        # 直接走 Layer 2: json_object mode
+        print("[IntentClassifier] json_object mode...", flush=True)
+        t2 = time.monotonic()
         result = await self._call_with_json_object(system_prompt, question)
         if result:
+            print(f"[IntentClassifier] 成功, 耗时: {(time.monotonic()-t2)*1000:.0f}ms", flush=True)
+            # 检测报表关键词，设置 output_mode
+            report_keywords = ["报表", "导出", "生成Excel", "生成excel", "下载", "导出数据", "生成报告"]
+            if any(kw in question for kw in report_keywords):
+                result.output_mode = "report"
             return result
+        print("[IntentClassifier] 失败", flush=True)
 
-        # Layer 3: raise for controller to trigger clarification
+        # Fallback: raise for controller to trigger clarification
+        print("[IntentClassifier] 所有层均失败, 抛出 ClassificationError", flush=True)
         raise ClassificationError("Intent classification failed at all LLM layers")
-
-    async def _call_with_schema(
-        self, system_prompt: str, question: str
-    ) -> IntentResult | None:
-        try:
-            resp = await asyncio.wait_for(
-                self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": question},
-                    ],
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "intent_result",
-                            "strict": True,
-                            "schema": INTENT_JSON_SCHEMA,
-                        },
-                    },
-                    temperature=0.1,
-                    max_tokens=500,
-                ),
-                timeout=5.0,
-            )
-            raw = resp.choices[0].message.content
-            return IntentResult.model_validate_json(raw)
-        except (ValidationError, asyncio.TimeoutError, Exception) as e:
-            logger.warning("json_schema mode failed: %s", e)
-            return None
 
     async def _call_with_json_object(
         self, system_prompt: str, question: str
     ) -> IntentResult | None:
         try:
+            print("[IntentClassifier] Layer 2: 发送 LLM 请求...", flush=True)
+            t0 = time.monotonic()
             resp = await asyncio.wait_for(
                 self._client.chat.completions.create(
                     model=self._model,
@@ -140,11 +129,23 @@ class IntentClassifier:
                     temperature=0.15,
                     max_tokens=500,
                 ),
-                timeout=8.0,
+                timeout=30.0,
             )
+            elapsed = (time.monotonic() - t0) * 1000
+            print(f"[IntentClassifier] Layer 2: LLM 响应到达, 耗时: {elapsed:.0f}ms", flush=True)
             raw = resp.choices[0].message.content
+            print(f"[IntentClassifier] Layer 2: 原始响应 ({len(raw)} chars): {raw[:200]}", flush=True)
             return IntentResult.model_validate_json(raw)
-        except (ValidationError, asyncio.TimeoutError, Exception) as e:
+        except asyncio.TimeoutError:
+            print("[IntentClassifier] Layer 2: 超时 (30s)", flush=True)
+            logger.warning("json_object fallback timed out")
+            return None
+        except ValidationError as e:
+            print(f"[IntentClassifier] Layer 2: Pydantic 校验失败: {e}", flush=True)
+            logger.warning("json_object fallback failed: %s", e)
+            return None
+        except Exception as e:
+            print(f"[IntentClassifier] Layer 2: 异常 {type(e).__name__}: {e}", flush=True)
             logger.warning("json_object fallback failed: %s", e)
             return None
 

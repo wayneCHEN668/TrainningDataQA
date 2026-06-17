@@ -11,6 +11,7 @@ from app.core.database import get_db, AsyncSessionLocal
 from app.core.config import settings
 from app.api.deps import get_current_user
 from app.schemas.auth import UserContext
+from app.schemas.intent import IntentResult
 from app.schemas.sse_events import format_sse
 from app.services.ai.schema_index import SchemaIndexService
 from app.services.ai.intent_classifier import IntentClassifier, ClassificationError
@@ -22,6 +23,7 @@ from app.services.query.tool_registry import ToolRegistry
 class AIQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, description="User question")
     history: list[dict] = Field(default_factory=list, description="Recent chat history [{role, content}, ...]")
+    clarification_intent: str | None = Field(default=None, description="Pre-classified intent when user selected a clarification option — bypasses re-classification")
 
 
 class FeedbackRequest(BaseModel):
@@ -58,30 +60,81 @@ async def ai_query(
         print(f"[Backend SSE] 用户: {current_user.user_name} (role={current_user.role_level})", flush=True)
         print(f"[Backend SSE] 聊天历史: {len(history)} 条", flush=True)
 
-        # [2] Intent classification (SchemaIndexService, load from YAML)
-        print("[Backend SSE] [2] 开始意图分类...", flush=True)
-        t2 = time.monotonic()
-        schema_svc = SchemaIndexService()
-        await schema_svc.load()
-        print(f"[Backend SSE] [2] Schema 从 YAML 文件加载完成", flush=True)
-        classifier = IntentClassifier(schema_svc=schema_svc)
-
-        try:
-            intent_result = await classifier.classify(q, current_user)
-            print(f"[Backend SSE] [2] 意图分类完成, 耗时: {(time.monotonic()-t2)*1000:.0f}ms", flush=True)
-            print(f"[Backend SSE] [2] 意图: {intent_result.intent}, 复杂度: {intent_result.complexity}, 置信度: {intent_result.confidence}", flush=True)
-            yield format_sse("intent_resolved", {
-                "intent": intent_result.intent,
-                "complexity": intent_result.complexity,
-                "confidence": intent_result.confidence,
-            })
-        except ClassificationError:
-            print(f"[Backend SSE] [2] 意图分类失败, 返回澄清选项 (耗时: {(time.monotonic()-t2)*1000:.0f}ms)", flush=True)
-            options = classifier.get_clarification_options(q, current_user)
-            yield format_sse("clarification_options", {
-                "options": [o.model_dump() for o in options],
+        # [2] Clarification loop-breaker: count recent clarification rounds
+        clarification_count = sum(
+            1 for h in history[-6:]
+            if h.get("role") == "assistant"
+            and "clarification" in str(h.get("metadata", {}))
+        )
+        MAX_CLARIFICATION_ROUNDS = 3
+        if clarification_count >= MAX_CLARIFICATION_ROUNDS:
+            print(f"[Backend SSE] [2] 澄清循环已达上限 ({clarification_count} 轮), 停止", flush=True)
+            yield format_sse("error", {
+                "code": "CLARIFICATION_LIMIT",
+                "message": "连续多次未能理解问题，请尝试用更具体的方式描述需求。",
+                "recoverable": True,
             })
             return
+
+        # [3] Intent classification (SchemaIndexService, load from YAML)
+        print("[Backend SSE] [3] 开始意图分类...", flush=True)
+        t3 = time.monotonic()
+        schema_svc = SchemaIndexService()
+        await schema_svc.load()
+        print(f"[Backend SSE] [3] Schema 从 YAML 文件加载完成", flush=True)
+        classifier = IntentClassifier(schema_svc=schema_svc)
+
+        # Bypass re-classification when user selected a clarification option
+        CLARIFICATION_INTENTS = {
+            "查询全部各院系的课件完成率": "COMPLETION_RATE_QUERY",
+            "查询全部未完成学习的学员名单": "INCOMPLETE_LEARNER_QUERY",
+            "查询全部学习进度的整体概况": "ORG_OVERVIEW_QUERY",
+        }
+
+        if body.clarification_intent:
+            bypass_intent = body.clarification_intent
+            if bypass_intent in CLARIFICATION_INTENTS:
+                bypass_intent = CLARIFICATION_INTENTS[bypass_intent]
+            print(f"[Backend SSE] [3] 用户选择澄清选项, 意图跳过分类: {bypass_intent}", flush=True)
+            intent_result = IntentResult(
+                intent=bypass_intent,
+                confidence=0.9,
+                complexity="simple",
+                need_clarification=False,
+            )
+        else:
+            try:
+                intent_result = await classifier.classify(q, current_user)
+                print(f"[Backend SSE] [3] 意图分类完成, 耗时: {(time.monotonic()-t3)*1000:.0f}ms", flush=True)
+                print(f"[Backend SSE] [3] 意图: {intent_result.intent}, 复杂度: {intent_result.complexity}, 置信度: {intent_result.confidence}", flush=True)
+
+                # Check if intent classifier suggests clarification
+                if intent_result.need_clarification:
+                    clarification_q = getattr(intent_result, "clarification_question", None)
+                    print(f"[Backend SSE] [3] 意图分类建议澄清: {clarification_q}", flush=True)
+                    options = classifier.get_clarification_options(q, current_user)
+                    yield format_sse("clarification_options", {
+                        "options": [o.model_dump() for o in options],
+                        "clarification_question": clarification_q or "",
+                    })
+                    return
+
+            except ClassificationError:
+                print(f"[Backend SSE] [3] 意图分类失败, 返回澄清选项 (耗时: {(time.monotonic()-t3)*1000:.0f}ms)", flush=True)
+                options = classifier.get_clarification_options(q, current_user)
+                yield format_sse("clarification_options", {
+                    "options": [o.model_dump() for o in options],
+                })
+                return
+
+        output_mode = getattr(intent_result, "output_mode", "analysis")
+        print(f"[Backend SSE] output_mode={output_mode}", flush=True)
+
+        yield format_sse("intent_resolved", {
+            "intent": intent_result.intent,
+            "complexity": intent_result.complexity,
+            "confidence": intent_result.confidence,
+        })
 
         # [3] Schema context by intent modules
         t3 = time.monotonic()
@@ -117,7 +170,7 @@ async def ai_query(
 
         steps_data = []
         step_idx = 0
-        async for event in engine.run(q, intent_result):
+        async for event in engine.run(q, intent_result, output_mode=output_mode):
             step_idx += 1
             print(f"[Backend SSE] [5] ReAct 事件 #{step_idx}: type={event.type}, data_keys={list(event.data.keys()) if event.data else 'None'}", flush=True)
             yield format_sse(event.type, event.data)
@@ -126,6 +179,40 @@ async def ai_query(
                 tools_used.append(event.data.get("tool_name", ""))
                 steps_data.append(event.data)
         print(f"[Backend SSE] [5] ReAct 引擎完成, 耗时: {(time.monotonic()-t5)*1000:.0f}ms, 总步数: {len(steps_data)}", flush=True)
+
+        # [5b] Excel 报表生成（后处理，不消耗 ReAct 步骤）
+        if output_mode == "report":
+            tool_results = getattr(engine, "_tool_results", [])
+            if tool_results:
+                print(f"[Backend SSE] [5b] 生成Excel报表, 工具结果数: {len(tool_results)}", flush=True)
+                try:
+                    from app.services.export.excel_generator import ExcelGenerator
+                    excel_gen = ExcelGenerator()
+                    output = await asyncio.to_thread(
+                        excel_gen.generate,
+                        tool_results, q,
+                        current_user.dept_code or "全部机构",
+                        settings.REPORT_DIR,
+                    )
+                    if output:
+                        print(f"[Backend SSE] [5b] Excel生成成功: {output['file_name']}", flush=True)
+                        yield format_sse("download_ready", {
+                            "file_name": output["file_name"],
+                            "file_url": output["file_url"],
+                            "file_size": output["file_size"],
+                            "sheets": output["sheets"],
+                            "total_rows": output["total_rows"],
+                            "total_columns": output["total_columns"],
+                        })
+                    else:
+                        print(f"[Backend SSE] [5b] 无可导出的表格数据", flush=True)
+                except Exception as exc:
+                    print(f"[Backend SSE] [5b] Excel生成失败: {exc}", flush=True)
+                    yield format_sse("error", {
+                        "code": "EXCEL_GENERATION_FAILED",
+                        "message": f"报表生成失败: {str(exc)[:100]}",
+                        "recoverable": False,
+                    })
 
         # [6] Final events
         duration_ms = int((time.monotonic() - start) * 1000)
