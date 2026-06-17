@@ -138,8 +138,8 @@ export function ReasoningPanel() {
                       {dl.sheets.length}个Sheet · {dl.totalRows.toLocaleString()}行 · {formatBytes(dl.fileSize)}
                     </div>
                     <a
-                      href={dl.fileUrl}
-                      download
+                      href={`${dl.fileUrl}?display_name=${encodeURIComponent(dl.fileName)}`}
+                      download={dl.fileName}
                       className="inline-block mt-2 px-4 py-1.5 bg-accent text-black text-xs font-medium rounded-full hover:opacity-90 transition-opacity"
                     >
                       下载 Excel

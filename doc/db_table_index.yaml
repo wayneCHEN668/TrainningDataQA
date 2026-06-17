@@ -15,6 +15,18 @@
 
 MODULE_INDEX:
 
+  M12_综合宽表:
+    answers: |
+      学员综合情况（完成率、成绩、学习时长、考试通过率、风险状态）|
+      技能点错误率、哪一步犯错最多 |
+      学员完整信息（含班级/院系/岗位/学历） |
+      课程完整信息（含分类/院系/课件数）
+    tables: v_learner_comprehensive, v_exam_analysis, v_skill_error_summary,
+            v_learner_overview, v_course_overview
+    note: |
+      这些是预聚合/预 JOIN 的宽表和视图，查上述问题直接用这些表，
+      无需 JOIN 多张基表。一张宽表 = 原来需要 3-6 张基表 JOIN 才能得到的结果。
+
   M1_组织架构:
     answers: 机构信息、院系信息、专业信息、班级信息、岗位定义、学制学期
     tables: org, department, major, class_group, position, curriculum, curriculum_term
@@ -36,7 +48,7 @@ MODULE_INDEX:
     tables: study_session_log, skill_point_log, skill_error_log
 
   M5_考试系统:
-    answers: 考试成绩、通过率、各题得分、哪道题错最多、考场信息、试卷构成
+    answers: 考试成绩、考试通过率、各题得分、哪道题错最多、考场信息、试卷构成
     tables: exam_session, exam_enrollment, exam_answer, exam_paper,
             paper_question, exam_paper_pool, question, question_option,
             question_type, question_attachment, paper_attachment, question_option_img
@@ -56,14 +68,17 @@ MODULE_INDEX:
             push_notification_log
 
   M9_统计数据:
-    answers: 日活、月活、机构每日学习人次、机构课程每日统计、课件学习时长统计
-    tables: org_daily_stats, org_monthly_stats, org_course_stats, courseware_study_stats
+    answers: 日活、月活、机构每日学习人次、机构课程每日统计、课件学习时长统计、院系/机构基准对比
+    tables: org_daily_stats, org_monthly_stats, org_course_stats, courseware_study_stats,
+            dept_benchmark_stats, org_benchmark_stats
     note: 这些是预聚合汇总表，查统计趋势优先用这里，不要聚合 study_session_log
 
   M10_进度成绩:
-    answers: 完成率、完成了几个课件、综合成绩、考试成绩加权、作业成绩加权、是否结业
+    answers: 完成率、完成了几个课件、综合成绩、考试成绩加权、作业成绩加权、是否结业、课程通过率
     tables: learning_progress, course_grade
-    note: learning_progress 是进度快照（课件级），course_grade 是综合成绩（课程级）
+    note: |
+      learning_progress 是进度快照（课件级），course_grade 是综合成绩（课程级）。
+      查学员综合成绩（含完成率/学习时长/风险状态）优先用 M12 的 v_learner_comprehensive 宽表。
 
   M11_学习路径:
     answers: 学习路径规划、AI 建议、路径进度、学习者画像、薄弱点
@@ -82,6 +97,169 @@ MODULE_INDEX:
 # ============================================================
 
 TABLE_SUMMARIES:
+
+  # ── M12 综合宽表 ──────────────────────────────────────────
+  # 注意: M12 的表是预聚合/预 JOIN 的宽表和视图，查对应问题优先用这些表，无需 JOIN 多张基表
+
+  v_learner_comprehensive:
+    label: 学员综合成绩宽表
+    module: M12_综合宽表
+    row_meaning: 一行 = 一个学员的综合学习画像（预聚合，每小时刷新）
+    answers:
+      - 学员完成率 | 完成了几门课 | 综合成绩 | 课件/考试/作业各得多少分
+      - 学了多长时间 | 学了几次 | 最近一次学习是什么时候
+      - 考试通过率 | 参加了几次考试 | 最高考试分
+      - 哪些学员有风险 | 风险类型 | 距上次学习多少天
+      - 学员成绩等级分布 | 排名
+    key_fields:
+      user_id: 学员ID
+      user_code: 工号/学号
+      user_name: 姓名
+      dept_code: 院系编号
+      dept_name: 院系名称
+      org_code: 机构编号
+      class_code: 班级编号
+      class_name: 班级名称
+      total_courses: 分配的课程总数
+      courses_completed: 已完成课程数
+      completion_rate: 课件完成率(%)
+      avg_composite_score: 多课程平均综合成绩
+      avg_courseware_score: 平均课件得分
+      avg_exam_score: 平均考试得分
+      avg_assignment_score: 平均作业得分
+      grade_rank: 综合等级（优/良/中/及格/不及格）
+      total_exams_taken: 参加考试次数
+      exams_passed: 通过考试次数
+      exam_pass_rate: 考试通过率(%)
+      best_exam_score: 最高考试分数
+      total_study_minutes: 累计学习时长(分钟)
+      total_study_sessions: 学习总次数
+      avg_session_minutes: 平均单次学习时长
+      last_studied_at: 最近学习时间
+      is_at_risk: 是否风险学员（1=是）
+      risk_type: 风险类型（inactive/low_score/overdue/near_deadline）
+      days_since_last_study: 距上次学习天数
+    joins:
+      - 已经预 JOIN 了 user_info + department + class_group + course_grade + study_session_log
+    caution: |
+      这是唯一需要查的学员综合数据表，不需要 JOIN 任何基表。
+      比分别查 user_info + course_grade + study_session_log + learning_progress 快 10 倍以上。
+
+  v_exam_analysis:
+    label: 考试分析宽表
+    module: M12_综合宽表
+    row_meaning: 一行 = 一个考生在一次考试中的完整记录（预 JOIN，每小时刷新）
+    answers:
+      - 考试通过率 | 平均分 | 最高分 | 最低分
+      - 某场考试有多少人参加 | 谁还没交卷 | 成绩分布
+      - 正确率 | 答对几题 | 总题数 | 各题型得分
+      - 考试耗时 | 第几次考试 | 是否已批阅
+    key_fields:
+      exam_session_code: 考场编号
+      session_name: 考场名称
+      open_at: 开放开始时间
+      close_at: 开放结束时间
+      org_code: 机构编号
+      linked_course_code: 关联课程编号
+      user_code: 考生编号
+      user_id: 系统用户ID
+      dept_code: 院系编号
+      attempt_number: 第几次考试
+      total_score: 总成绩
+      is_passed: 是否及格（>=60分）
+      is_graded: 是否已批阅
+      submitted_at: 交卷时间
+      duration_seconds: 答题耗时（秒）
+      type_scores: 各题型得分 JSON
+      correct_count: 正确题数
+      total_questions: 总题数
+      accuracy_rate: 正确率(%)
+    joins:
+      - 已经预 JOIN 了 exam_session + exam_enrollment + user_info
+    caution: |
+      查考试分析直接用此宽表，不需要 JOIN exam_session + exam_enrollment。
+      当前表为空（无考试数据），数据到位后自动可用。
+
+  v_skill_error_summary:
+    label: 技能点错误汇总表
+    module: M12_综合宽表
+    row_meaning: 一行 = 某个课件某个技能点步骤在某天的错误统计（预聚合，每天刷新）
+    answers:
+      - 哪个技能点错误率最高 | 哪些课件出错最多
+      - 某步骤的错误率 | 有多少人在这里出错 | 人均错误次数
+      - 按天看错误率趋势 | 哪些院系错误率高
+    key_fields:
+      courseware_code: 课件编号
+      courseware_name: 课件名称
+      course_code: 课程编号
+      dept_code: 院系编号
+      step_index: 技能点步骤序号
+      total_attempts: 总操作次数
+      total_errors: 总错误次数
+      error_rate: 错误率(%)
+      unique_users: 涉及用户数
+      avg_errors_per_user: 人均错误次数
+      stat_date: 统计日期
+    joins:
+      - 已经预聚合了 skill_error_log 按 courseware_code + step_index + stat_date 分组
+    caution: |
+      查技能点错误分析直接用此表，不需要聚合 skill_error_log。
+      按 stat_date 过滤可获每日趋势，按 error_rate DESC 排序得错误最高的步骤。
+
+  v_learner_overview:
+    label: 学员信息全景视图
+    module: M12_综合宽表
+    row_meaning: 一行 = 一个学员的完整信息（含院系/班级/岗位/扩展档案，实时 SQL VIEW）
+    answers:
+      - 学员完整信息 | 属于哪个班级 | 什么岗位 | 性别学历
+      - 某班有哪些学员 | 某院系有多少学员
+      - 最后登录时间 | 学员列表
+    key_fields:
+      user_id: 学员ID
+      user_code: 工号/学号
+      user_name: 姓名
+      role_level: 角色等级（0超管/1管理员/2教师/3学生）
+      dept_code: 院系编号
+      dept_name: 院系名称
+      class_code: 班级编号
+      class_name: 班级名称
+      position_code: 岗位编号
+      position_name: 岗位名称
+      gender: 性别（1男/2女）
+      education: 学历
+      job_title: 职务
+      last_login_at: 最后登录时间
+      org_code: 机构编号
+    joins:
+      - 已经预 JOIN 了 user_info + department + student_class + class_group + position + user_profile
+    caution: |
+      这是实时 SQL VIEW，查询学员完整信息直接用此视图，不需要 JOIN 6 张基表。
+      查学员人数直接 COUNT(*)，查特定院系/班级用 WHERE dept_code/class_code 过滤。
+
+  v_course_overview:
+    label: 课程信息全景视图
+    module: M12_综合宽表
+    row_meaning: 一行 = 一门课程的完整信息（含分类/院系/课件数，实时 SQL VIEW）
+    answers:
+      - 课程完整信息 | 属于哪个分类 | 哪个院系 | 学分学时
+      - 某课程包含多少个课件 | 哪些课程已发布
+      - 课程列表及统计
+    key_fields:
+      course_code: 课程编号
+      course_name: 课程名称
+      credit: 学分
+      study_hours: 学时
+      category_code: 分类编号
+      category_name: 分类名称
+      dept_code: 院系编号
+      dept_name: 院系名称
+      is_published: 是否已发布
+      courseware_count: 包含的课件数量
+    joins:
+      - 已经预 JOIN 了 course + course_category + department + courseware_count 子查询
+    caution: |
+      查课程信息直接用此视图，不需要 JOIN course + course_category + department。
+      查某分类/院系下的课程用 WHERE category_code/dept_code 过滤。
 
   # ── M1 组织架构 ──────────────────────────────────────────
 
@@ -745,6 +923,53 @@ TABLE_SUMMARIES:
       study_minutes: 有效学习时长
       stat_date: 统计日期
 
+  dept_benchmark_stats:
+    label: 院系基准统计表
+    module: M9_统计数据
+    row_meaning: 一行 = 某院系在某统计周期内的基准指标（含百分位，每月刷新）
+    answers:
+      - 院系平均完成率对比 | 院系平均考试通过率排名
+      - 院系人均学习时长 | 院系平均综合成绩
+      - 院系技能点错误率对比 | 参与度评分
+      - 完成率/成绩的 P25/P50/P75 分位，用于横向对比
+    key_fields:
+      dept_code: 院系编号
+      org_code: 所属机构
+      stat_period: 统计周期（month/quarter/year）
+      stat_date: 统计截止日期
+      avg_completion_rate: 平均课件完成率(%)
+      avg_exam_pass_rate: 平均考试通过率(%)
+      avg_composite_score: 平均综合成绩
+      avg_study_minutes: 人均学习时长(分钟)
+      avg_skill_error_rate: 平均技能点出错率(%)
+      avg_engagement_score: 平均参与度评分
+      p25_completion_rate: 完成率 P25 分位
+      p50_completion_rate: 完成率 P50 分位（中位）
+      p75_completion_rate: 完成率 P75 分位
+      total_learners: 院系学员总数
+    caution: 用于院系间横向对比，包含百分位数据。查"比平均好还是差"类问题必用此表。
+
+  org_benchmark_stats:
+    label: 机构基准统计表
+    module: M9_统计数据
+    row_meaning: 一行 = 某机构在某统计周期内的基准指标（含百分位，每月刷新）
+    answers:
+      - 机构间对比 | 机构平均完成率 | 机构平均通过率
+      - 机构总体排名 | 机构人均学习时长对比
+      - 平台总学员数 | 机构数
+    key_fields:
+      org_code: 机构编号
+      stat_period: 统计周期（month/quarter/year）
+      stat_date: 统计截止日期
+      avg_completion_rate: 平均课件完成率(%)
+      avg_exam_pass_rate: 平均考试通过率(%)
+      avg_composite_score: 平均综合成绩
+      avg_study_minutes: 人均学习时长(分钟)
+      avg_skill_error_rate: 平均技能点出错率(%)
+      total_orgs: 平台机构总数
+      total_learners: 平台学员总数
+    caution: 用于跨机构对比，dept_benchmark_stats 用于院系级对比。
+
   # ── M10 进度成绩 ──────────────────────────────────────────
 
   learning_progress:
@@ -885,25 +1110,31 @@ AI_FORBIDDEN_TABLES:
 # ============================================================
 
 INTENT_MODULE_ROUTING:
-  COMPLETION_RATE_QUERY:      [M3_课程课件, M4_学习记录, M10_进度成绩]
-  INCOMPLETE_LEARNER_QUERY:   [M10_进度成绩, M2_用户权限, M3_课程课件]
-  LEARNING_PROGRESS_QUERY:    [M10_进度成绩, M4_学习记录]
-  LEARNING_DURATION_QUERY:    [M4_学习记录, M9_统计数据]
-  EXAM_SCORE_QUERY:           [M5_考试系统]
-  EXAM_PASS_RATE_QUERY:       [M5_考试系统]
-  SKILL_ERROR_QUERY:          [M4_学习记录, M3_课程课件]
-  COMPREHENSIVE_GRADE_QUERY:  [M10_进度成绩]
-  PERFORMANCE_RANKING_QUERY:  [M10_进度成绩, M5_考试系统]
-  LEARNING_TREND_QUERY:       [M9_统计数据, M4_学习记录]
-  ORG_OVERVIEW_QUERY:         [M9_统计数据, M10_进度成绩]
-  ORG_COMPARISON_QUERY:       [M9_统计数据, M10_进度成绩, M1_组织架构]
-  AT_RISK_LEARNER_QUERY:      [M10_进度成绩, M5_考试系统, M2_用户权限]
-  COMPLIANCE_RISK_QUERY:      [M10_进度成绩, M5_考试系统, M3_课程课件]
-  INDIVIDUAL_PROFILE_QUERY:   [M11_学习路径, M10_进度成绩, M2_用户权限]
-  ROOT_CAUSE_ANALYSIS:        [M9_统计数据, M10_进度成绩, M4_学习记录, M5_考试系统]
-  ANOMALY_INVESTIGATION:      [M9_统计数据, M4_学习记录]
-  COMPARATIVE_DIAGNOSIS:      [M10_进度成绩, M9_统计数据, M1_组织架构]
-  COMPLETION_PREDICTION:      [M10_进度成绩, M9_统计数据]
-  RISK_PREDICTION:            [M10_进度成绩, M5_考试系统]
-  IMPROVEMENT_SUGGESTION:     [M10_进度成绩, M9_统计数据, M4_学习记录]
-  TRAINING_PLANNING:          [M3_课程课件, M10_进度成绩, M11_学习路径]
+  COMPLETION_RATE_QUERY:      [M12_综合宽表, M10_进度成绩, M3_课程课件]
+  INCOMPLETE_LEARNER_QUERY:   [M12_综合宽表, M10_进度成绩, M2_用户权限]
+  LEARNING_PROGRESS_QUERY:    [M12_综合宽表, M10_进度成绩, M4_学习记录]
+  LEARNING_DURATION_QUERY:    [M12_综合宽表, M4_学习记录, M9_统计数据]
+  EXAM_SCORE_QUERY:           [M12_综合宽表, M5_考试系统]
+  EXAM_PASS_RATE_QUERY:       [M12_综合宽表, M5_考试系统]
+  SKILL_ERROR_QUERY:          [M12_综合宽表, M4_学习记录, M3_课程课件]
+  COMPREHENSIVE_GRADE_QUERY:  [M12_综合宽表, M10_进度成绩]
+  COURSE_PASS_RATE_QUERY:     [M12_综合宽表, M10_进度成绩]
+  PERFORMANCE_RANKING_QUERY:  [M12_综合宽表, M10_进度成绩, M5_考试系统]
+  LEARNING_TREND_QUERY:       [M9_统计数据, M12_综合宽表, M4_学习记录]
+  ORG_OVERVIEW_QUERY:         [M12_综合宽表, M9_统计数据, M10_进度成绩]
+  ORG_COMPARISON_QUERY:       [M9_统计数据, M12_综合宽表, M1_组织架构]
+  AT_RISK_LEARNER_QUERY:      [M12_综合宽表, M10_进度成绩, M2_用户权限]
+  COMPLIANCE_RISK_QUERY:      [M12_综合宽表, M10_进度成绩, M5_考试系统]
+  INDIVIDUAL_PROFILE_QUERY:   [M12_综合宽表, M2_用户权限, M11_学习路径]
+  ROOT_CAUSE_ANALYSIS:        [M12_综合宽表, M9_统计数据, M10_进度成绩, M4_学习记录]
+  ANOMALY_INVESTIGATION:      [M9_统计数据, M12_综合宽表, M4_学习记录]
+  COMPARATIVE_DIAGNOSIS:      [M12_综合宽表, M10_进度成绩, M9_统计数据, M1_组织架构]
+  COMPLETION_PREDICTION:      [M12_综合宽表, M10_进度成绩, M9_统计数据]
+  RISK_PREDICTION:            [M12_综合宽表, M10_进度成绩, M5_考试系统]
+  IMPROVEMENT_SUGGESTION:     [M12_综合宽表, M10_进度成绩, M9_统计数据]
+  TRAINING_PLANNING:          [M3_课程课件, M12_综合宽表, M10_进度成绩]
+  CLASS_STUDENT_QUERY:        [M12_综合宽表, M2_用户权限, M1_组织架构]
+  ROLE_COUNT_QUERY:           [M12_综合宽表, M2_用户权限]
+  COURSE_COUNT_QUERY:         [M12_综合宽表, M3_课程课件, M5_考试系统]
+  ORG_STRUCTURE_QUERY:        [M12_综合宽表, M1_组织架构, M2_用户权限]
+  REPORT_GENERATION:           [M12_综合宽表, M9_统计数据, M10_进度成绩, M4_学习记录, M5_考试系统]

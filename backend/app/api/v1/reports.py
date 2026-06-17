@@ -1,6 +1,6 @@
 """下载端点 — 提供已生成的报表文件下载"""
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from app.core.config import settings
 
@@ -8,7 +8,10 @@ router = APIRouter()
 
 
 @router.get("/reports/{file_name}")
-async def download_report(file_name: str):
+async def download_report(
+    file_name: str,
+    display_name: str = Query(default="", description="Human-readable filename for browser download dialog"),
+):
     """下载之前生成的报表文件。文件在 REPORT_TTL_HOURS 后自动清理。"""
     # 防止路径遍历攻击
     if ".." in file_name or "/" in file_name or "\\" in file_name:
@@ -21,8 +24,9 @@ async def download_report(file_name: str):
             detail="文件不存在或已过期，请重新提问生成报表",
         )
 
+    download_name = display_name if display_name else file_name
     return FileResponse(
         file_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=file_name,
+        filename=download_name,
     )
