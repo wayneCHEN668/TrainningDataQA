@@ -1,4 +1,4 @@
-"""22 intent definitions for the intent classifier."""
+"""26 intent definitions for the intent classifier."""
 
 INTENT_DEFINITIONS = [
     {"intent": "COMPLETION_RATE_QUERY",    "label": "完成率查询",    "complexity": "simple",   "keywords": "完成率/完成情况/没完成"},
@@ -23,12 +23,17 @@ INTENT_DEFINITIONS = [
     {"intent": "RISK_PREDICTION",          "label": "风险预测",      "complexity": "moderate", "keywords": "可能不及格/有没有风险"},
     {"intent": "IMPROVEMENT_SUGGESTION",   "label": "改进建议",      "complexity": "complex",  "keywords": "建议/怎么提升/如何改善"},
     {"intent": "TRAINING_PLANNING",        "label": "培训规划",      "complexity": "complex",  "keywords": "规划/下一步/重点培训什么"},
+    {"intent": "CLASS_STUDENT_QUERY",     "label": "班级学生查询",  "complexity": "simple",   "keywords": "班级有哪些学生/列出学生/班里的学生/某班学生名单/学生列表"},
+    {"intent": "ROLE_COUNT_QUERY",        "label": "角色人数统计",  "complexity": "simple",   "keywords": "多少学生/多少老师/管理员人数/角色分布/按角色统计/学生和老师"},
+    {"intent": "COURSE_COUNT_QUERY",      "label": "课程数量统计",  "complexity": "simple",   "keywords": "多少门课/课程总数/共有几门课/几门课程"},
+    {"intent": "ORG_STRUCTURE_QUERY",     "label": "组织架构查询",  "complexity": "simple",   "keywords": "有哪些班级/某院系下有哪些班/专业列表/院系专业/班级和人数"},
+    {"intent": "REPORT_GENERATION",        "label": "报表导出",      "complexity": "moderate", "keywords": "报表/导出/生成Excel/生成excel/下载/导出数据/生成报告"},
 ]
 
 
 def get_intent_list_for_prompt() -> str:
-    """Format 22 intents as a prompt-friendly table."""
-    lines = ["## Supported Intents (22 total)"]
+    """Format 26 intents as a prompt-friendly table."""
+    lines = ["## Supported Intents (26 total)"]
     for d in INTENT_DEFINITIONS:
         lines.append(
             f"- {d['intent']} | {d['label']} | complexity={d['complexity']} | triggers: {d['keywords']}"

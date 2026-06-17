@@ -65,7 +65,7 @@ class TestIntentResult:
     def test_json_schema_has_intent_enum(self):
         props = INTENT_JSON_SCHEMA["properties"]
         assert "enum" in props["intent"]
-        assert len(props["intent"]["enum"]) == 22
+        assert len(props["intent"]["enum"]) == 27
 
     def test_slot_values_custom(self):
         slot = SlotValues(
@@ -82,7 +82,7 @@ class TestIntentResult:
 
 class TestIntentDefinitions:
     def test_22_intents(self):
-        assert len(INTENT_DEFINITIONS) == 22
+        assert len(INTENT_DEFINITIONS) == 27
 
     def test_no_duplicate_intents(self):
         codes = [d["intent"] for d in INTENT_DEFINITIONS]
@@ -141,7 +141,7 @@ class TestClarificationService:
         assert any("D001" in o.text for o in options)
 
 
-# --- IntentClassifier with mocked LLM (3 tests) ---
+# --- IntentClassifier with mocked LLM (2 tests) ---
 
 class TestIntentClassifier:
     @pytest.fixture
@@ -151,7 +151,7 @@ class TestIntentClassifier:
         return svc
 
     @pytest.mark.asyncio
-    async def test_classify_success_schema_mode(self, mock_schema_svc, user_ctx):
+    async def test_classify_success(self, mock_schema_svc, user_ctx):
         classifier = IntentClassifier(schema_svc=mock_schema_svc)
         mock_result = IntentResult(
             intent="EXAM_PASS_RATE_QUERY",
@@ -160,29 +160,13 @@ class TestIntentClassifier:
             slots=SlotValues(time_range={"type": "this_month"}, scope_type="all"),
             need_clarification=False,
         )
-        with patch.object(classifier, "_call_with_schema", AsyncMock(return_value=mock_result)):
+        with patch.object(classifier, "_call_with_json_object", AsyncMock(return_value=mock_result)):
             result = await classifier.classify("测试问题", user_ctx)
             assert result.intent == "EXAM_PASS_RATE_QUERY"
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_json_object(self, mock_schema_svc, user_ctx):
+    async def test_raises_classification_error_on_failure(self, mock_schema_svc, user_ctx):
         classifier = IntentClassifier(schema_svc=mock_schema_svc)
-        mock_result = IntentResult(
-            intent="COMPLETION_RATE_QUERY",
-            confidence=0.85,
-            complexity="simple",
-            slots=SlotValues(time_range={"type": "this_month"}, scope_type="all"),
-            need_clarification=False,
-        )
-        with patch.object(classifier, "_call_with_schema", AsyncMock(return_value=None)):
-            with patch.object(classifier, "_call_with_json_object", AsyncMock(return_value=mock_result)):
-                result = await classifier.classify("测试", user_ctx)
-                assert result.intent == "COMPLETION_RATE_QUERY"
-
-    @pytest.mark.asyncio
-    async def test_raises_classification_error_on_double_failure(self, mock_schema_svc, user_ctx):
-        classifier = IntentClassifier(schema_svc=mock_schema_svc)
-        with patch.object(classifier, "_call_with_schema", AsyncMock(return_value=None)):
-            with patch.object(classifier, "_call_with_json_object", AsyncMock(return_value=None)):
-                with pytest.raises(ClassificationError):
-                    await classifier.classify("测试", user_ctx)
+        with patch.object(classifier, "_call_with_json_object", AsyncMock(return_value=None)):
+            with pytest.raises(ClassificationError):
+                await classifier.classify("测试", user_ctx)
