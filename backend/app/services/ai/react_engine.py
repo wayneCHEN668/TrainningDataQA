@@ -145,8 +145,6 @@ class ReactEngine:
         tool_by_name = {t.name: t for t in self._tools}
         self._tool_results: list[dict] = []
 
-        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=question)]
         answer_buffer = ""
         chart_ids = set()

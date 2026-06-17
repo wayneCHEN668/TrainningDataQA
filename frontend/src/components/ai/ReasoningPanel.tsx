@@ -4,12 +4,7 @@ import { useChatStore } from "../../stores/chatStore";
 import type { ThinkingStep } from "../../types/chat";
 import { ThinkingSteps } from "./ThinkingSteps";
 import { ChartRenderer } from "./ChartRenderer";
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
-}
+import { formatBytes } from "../../utils/format";
 
 /** Collapsible wrapper for thinking steps — folded by default. */
 function CollapsibleSteps({ steps }: { steps: ThinkingStep[] }) {

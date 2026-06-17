@@ -1,6 +1,7 @@
 import type { Message, ClarificationOption } from "../../types/chat";
 import { ClarificationOptions } from "./ClarificationOptions";
 import { FileSpreadsheet } from "lucide-react";
+import { formatBytes } from "../../utils/format";
 import { MessageActions } from "./MessageActions";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -197,11 +198,7 @@ export function MessageBubble({
                   </div>
                   <div>
                     <span className="block text-text-secondary font-medium">
-                      {dl.fileSize < 1024
-                        ? `${dl.fileSize} B`
-                        : dl.fileSize < 1048576
-                          ? `${(dl.fileSize / 1024).toFixed(1)} KB`
-                          : `${(dl.fileSize / 1048576).toFixed(1)} MB`}
+                      {formatBytes(dl.fileSize)}
                     </span>
                     <span>文件大小</span>
                   </div>

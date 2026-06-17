@@ -87,13 +87,11 @@ class ExcelGenerator:
         file_path = os.path.join(report_dir, safe_name)
 
         wb = Workbook()
-        # 删除默认 sheet，用命名 sheet 替换
-        if sheets_data:
-            wb.remove(wb.active)
+        wb.remove(wb.active)  # sheets_data 已保证非空
 
         for sheet_name, rows in sheets_data:
-            ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet名限31字符
-            self._write_sheet(ws, sheet_name, rows, question, user_scope)
+            ws = wb.create_sheet(title=sheet_name[:31])
+            self._write_sheet(ws, sheet_name, rows, file_name, user_scope)
 
         wb.save(file_path)
         file_size = os.path.getsize(file_path)
@@ -162,7 +160,7 @@ class ExcelGenerator:
         ws,
         sheet_name: str,
         rows: list[dict],
-        question: str,
+        title: str,
         user_scope: str,
     ):
         """填充单个 Sheet：标题 → 副标题 → 表头 → 数据 → 格式化"""
@@ -174,7 +172,6 @@ class ExcelGenerator:
         nrows = len(rows)
 
         # 第1行: 标题（合并单元格）
-        title = self._derive_title(question)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
         title_cell = ws.cell(1, 1, title)
         title_cell.font = self._TITLE_FONT
