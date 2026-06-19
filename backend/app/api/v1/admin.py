@@ -1,9 +1,10 @@
 """Admin endpoints for system statistics."""
 import json
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from app.api.deps import get_current_user
 from app.schemas.auth import UserContext
+from app.services.ai.schema_index import SchemaIndexService
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -31,3 +32,20 @@ async def admin_stats(
     if data:
         return data
     return {"status": "no_data", "message": "Evolution report not yet generated"}
+
+
+@router.get("/schema-refresh")
+async def schema_refresh(
+    request: Request,
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Manual schema cache refresh (admin only).
+    
+    Requires admin role (role_level <= 1) to prevent unauthorized cache invalidation
+    which could cause cache stampede under high concurrency.
+    """
+    if current_user.role_level > 1:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    svc: SchemaIndexService = request.app.state.schema_svc
+    await svc.refresh()
+    return {"status": "refreshed"}

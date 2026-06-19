@@ -18,12 +18,15 @@ export interface HistoryItem {
   role: "user" | "ai";
   content: string;
   ts: number;
+  /** Message type marker: "clarification" for clarification rounds */
+  type?: "clarification";
 }
 
 /** Shape returned to the backend (no `ts`). */
 export interface HistoryPayload {
   role: "user" | "ai";
   content: string;
+  type?: "clarification";
 }
 
 // ---------------------------------------------------------------------------
@@ -46,14 +49,18 @@ export function loadHistory(): HistoryPayload[] {
 
     // Keep last MAX_ENTRIES only; return without ts field
     const recent = valid.slice(-MAX_ENTRIES);
-    return recent.map(({ role, content }) => ({ role, content }));
+    return recent.map(({ role, content, type }) => {
+      const payload: HistoryPayload = { role, content };
+      if (type) payload.type = type;
+      return payload;
+    });
   } catch {
     return [];
   }
 }
 
 /** Append a Q&A pair to existing history, trim, write back. */
-export function saveHistory(userMsg: string, aiMsg: string): void {
+export function saveHistory(userMsg: string, aiMsg: string, aiType?: "clarification"): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const items: HistoryItem[] = raw ? JSON.parse(raw) : [];
@@ -61,7 +68,11 @@ export function saveHistory(userMsg: string, aiMsg: string): void {
 
     const now = Date.now();
     items.push({ role: "user", content: userMsg, ts: now });
-    items.push({ role: "ai", content: aiMsg, ts: now });
+    const aiItem: HistoryItem = { role: "ai", content: aiMsg, ts: now };
+    if (aiType) {
+      aiItem.type = aiType;
+    }
+    items.push(aiItem);
 
     // Keep last MAX_ENTRIES
     const trimmed = items.slice(-MAX_ENTRIES);
@@ -69,6 +80,11 @@ export function saveHistory(userMsg: string, aiMsg: string): void {
   } catch {
     // localStorage full or unavailable — silently skip
   }
+}
+
+/** Append a clarification round to history (user question + clarification response). */
+export function saveClarificationHistory(userMsg: string, clarificationQuestion: string): void {
+  saveHistory(userMsg, clarificationQuestion, "clarification");
 }
 
 /** Clear all history (e.g., "New Chat" button). */

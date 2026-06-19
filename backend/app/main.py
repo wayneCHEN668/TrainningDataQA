@@ -48,11 +48,3 @@ app.include_router(reports_router, prefix="/api/v1")
 @app.get("/api/v1/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(status="ok", version="0.1.0")
-
-
-@app.get("/api/v1/admin/schema-refresh")
-async def schema_refresh():
-    """Manual schema cache refresh (auth to be added in Phase 7)."""
-    svc: SchemaIndexService = app.state.schema_svc
-    await svc.refresh()
-    return {"status": "refreshed"}

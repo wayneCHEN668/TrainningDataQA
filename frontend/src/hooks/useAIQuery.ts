@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useChatStore } from "../stores/chatStore";
-import { loadHistory, saveHistory } from "../utils/chatStorage";
+import { loadHistory, saveHistory, saveClarificationHistory } from "../utils/chatStorage";
 import type { ClarificationOption } from "../types/chat";
 
 let _msgIdCounter = 0;
@@ -56,10 +56,17 @@ export function useAIQuery() {
         break;
 
       case "clarification_options":
-        store.updateLastAiMessage((msg) => ({
-          ...msg,
-          clarificationOptions: data.options,
-        }));
+        {
+          // Store clarification question in message content for display and history
+          const clarificationQuestion = data.clarification_question || "请选择以下选项以澄清您的问题：";
+          store.updateLastAiMessage((msg) => ({
+            ...msg,
+            content: clarificationQuestion,
+            clarificationOptions: data.options,
+          }));
+          // Save to history with type marker for loop detection
+          saveClarificationHistory(questionRef.current, clarificationQuestion);
+        }
         store.setStatus("done");
         abortRef.current?.abort();
         break;

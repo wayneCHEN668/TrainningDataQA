@@ -73,21 +73,23 @@ class ToolRegistry:
         from app.schemas.tools import CompletionRateInput
 
         async def _run(scope_type, time_start, time_end, course_code=None, group_by="none"):
-            # Try wide table first
-            lc = LearnerComprehensive.__table__
-            cols = [
-                lc.c.user_id, lc.c.user_name, lc.c.dept_name,
-                lc.c.completion_rate, lc.c.total_courses, lc.c.courses_completed,
-                lc.c.org_code, lc.c.dept_code, lc.c.class_name, lc.c.class_code,
-            ]
-            stmt = select(*cols)
+            # 路由规则：
+            # - 有 course_code → 必须走 fallback（course_grade 表），
+            #   因为 LearnerComprehensive 宽表以学员为粒度，没有 course_code 字段，
+            #   一个学员有多门课，无法在宽表上按课程过滤。
+            # - 无 course_code → 优先走宽表（性能更好），宽表为空时降级到 fallback。
             if course_code:
-                stmt = stmt.where(lc.c.completion_rate >= 0)
-            rows = await self._executor.execute(stmt)
-
-            # Fallback: query course_grade + user_info + department directly
-            if not rows:
                 rows = await _fallback_completion_rate(course_code)
+            else:
+                lc = LearnerComprehensive.__table__
+                cols = [
+                    lc.c.user_id, lc.c.user_name, lc.c.dept_name,
+                    lc.c.completion_rate, lc.c.total_courses, lc.c.courses_completed,
+                    lc.c.org_code, lc.c.dept_code, lc.c.class_name, lc.c.class_code,
+                ]
+                rows = await self._executor.execute(select(*cols))
+                if not rows:
+                    rows = await _fallback_completion_rate()
 
             if not rows:
                 return {"completion_rate": 0, "total_learners": 0, "breakdown": [],
@@ -112,9 +114,12 @@ class ToolRegistry:
                     for k, v in groups.items()
                 ]
             elif group_by == "course":
+                # fallback 查询已包含 course_code/course_name，按课程分组
                 groups: dict = defaultdict(list)
                 for r in rows:
-                    groups[r.get("class_name", "Unknown")].append(float(r["completion_rate"]))
+                    groups[r.get("course_name") or r.get("course_code", "Unknown")].append(
+                        float(r["completion_rate"])
+                    )
                 breakdown = [
                     {"group": k, "rate": round(sum(v) / len(v), 2), "count": len(v)}
                     for k, v in groups.items()
@@ -124,17 +129,23 @@ class ToolRegistry:
                 "completion_rate": round(avg_rate, 2),
                 "total_learners": len(rows),
                 "breakdown": breakdown,
-                "data_source": "course_grade",
+                "data_source": "course_grade" if course_code else "wide_table",
             }
 
         async def _fallback_completion_rate(course_code=None):
-            """Fallback: query course_grade joined with user_info + department."""
+            """Fallback: query course_grade joined with user_info + department.
+
+            当有 course_code 时为主路径（非降级），宽表无法按课程过滤。
+            SELECT 中加入 course_code/course_name 以支持 group_by='course'。
+            """
             from app.models.progress import CourseGrade
             from app.models.user import UserInfo
             from app.models.org import Department
+            from app.models.course import Course
             cg = CourseGrade.__table__
             ui = UserInfo.__table__
             dept = Department.__table__
+            c = Course.__table__
             stmt = (
                 select(
                     cg.c.user_id,
@@ -145,9 +156,12 @@ class ToolRegistry:
                     cg.c.completed_courseware.label("courses_completed"),
                     dept.c.org_code,
                     ui.c.dept_code,
+                    cg.c.course_code,
+                    c.c.course_name,
                 )
                 .outerjoin(ui, cg.c.user_id == ui.c.user_id)
                 .outerjoin(dept, ui.c.dept_code == dept.c.dept_code)
+                .outerjoin(c, cg.c.course_code == c.c.course_code)
             )
             if course_code:
                 stmt = stmt.where(cg.c.course_code == course_code)
@@ -776,30 +790,35 @@ class ToolRegistry:
             )
             major_codes = [r["major_code"] for r in major_rows]
 
-            # Get classes under those majors
+            # Get classes under those majors with student counts in a single query
+            # using LEFT JOIN + GROUP BY to avoid N+1 query problem
             if major_codes:
                 cg_rows = await self._executor.execute(
-                    select(cg.c.class_code, cg.c.class_name, cg.c.major_code, cg.c.enroll_year)
+                    select(
+                        cg.c.class_code,
+                        cg.c.class_name,
+                        cg.c.major_code,
+                        cg.c.enroll_year,
+                        func.count(sc.c.user_id).label("student_count"),
+                    )
+                    .select_from(cg)
+                    .outerjoin(sc, cg.c.class_code == sc.c.class_code)
                     .where(cg.c.major_code.in_(major_codes))
+                    .group_by(cg.c.class_code, cg.c.class_name, cg.c.major_code, cg.c.enroll_year)
                 )
             else:
                 cg_rows = []
 
-            # For each class, count students
-            classes = []
-            for c in cg_rows:
-                count_rows = await self._executor.execute(
-                    select(func.count().label("cnt")).select_from(sc)
-                    .where(sc.c.class_code == c["class_code"])
-                )
-                student_count = count_rows[0]["cnt"] if count_rows else 0
-                classes.append({
+            classes = [
+                {
                     "class_code": c["class_code"],
                     "class_name": c["class_name"],
                     "major_code": c.get("major_code"),
                     "enroll_year": c.get("enroll_year"),
-                    "student_count": student_count,
-                })
+                    "student_count": c["student_count"] or 0,
+                }
+                for c in cg_rows
+            ]
 
             return {
                 "dept_code": dept_code,

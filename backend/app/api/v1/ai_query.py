@@ -36,6 +36,51 @@ class FeedbackRequest(BaseModel):
 router = APIRouter(prefix="/api/v1", tags=["ai-query"])
 
 
+# ---------------------------------------------------------------------------
+# History truncation — prevent LLM context window overflow
+# ---------------------------------------------------------------------------
+
+# Reserve space for system prompt (~2000 tokens) + tool results
+MAX_HISTORY_TOKENS = 2000
+# Maximum conversation turns to retain (1 turn = 2 messages)
+MAX_HISTORY_TURNS = 10
+
+
+def _trim_history(history: list[dict], max_turns: int, max_tokens: int) -> list[dict]:
+    """Trim history to recent N turns while respecting token budget.
+    
+    Strategy:
+    1. Keep only the most recent max_turns * 2 messages
+    2. Estimate tokens (rough: 1 token ≈ 3 chars for mixed CJK/English)
+    3. Drop oldest messages if total exceeds max_tokens
+    
+    This prevents context window overflow when system prompt + tools + history
+    would exceed the LLM's limit.
+    """
+    if not history:
+        return []
+    
+    # Keep only recent turns (each turn = user + ai = 2 messages)
+    recent = history[-(max_turns * 2):]
+    
+    def estimate_tokens(msg: dict) -> int:
+        """Rough token estimate: ~1 token per 3 characters (mixed content)."""
+        content = msg.get("content", "")
+        return max(1, len(content) // 3)
+    
+    # Build trimmed list from most recent, stopping at token limit
+    total = 0
+    trimmed = []
+    for msg in reversed(recent):
+        msg_tokens = estimate_tokens(msg)
+        if total + msg_tokens > max_tokens:
+            break
+        trimmed.insert(0, msg)
+        total += msg_tokens
+    
+    return trimmed
+
+
 @router.post("/ai-query")
 async def ai_query(
     request: Request,
@@ -45,7 +90,8 @@ async def ai_query(
 ) -> StreamingResponse:
 
     q = body.question
-    history = body.history
+    # Trim history to prevent context window overflow
+    history = _trim_history(body.history or [], MAX_HISTORY_TURNS, MAX_HISTORY_TOKENS)
 
     async def event_stream():
         import sys
@@ -62,10 +108,23 @@ async def ai_query(
         print(f"[Backend SSE] 聊天历史: {len(history)} 条", flush=True)
 
         # [2] Clarification loop-breaker: count recent clarification rounds
+        # Detection: type field == "clarification" (primary) or content contains clarification markers (fallback)
+        CLARIFICATION_CONTENT_MARKERS = ["请选择以下选项以澄清", "clarification", "澄清您的问题"]
+        
+        def _is_clarification_msg(h: dict) -> bool:
+            """Check if a history message is a clarification response."""
+            if h.get("role") != "ai":
+                return False
+            # Primary: check type field (set by frontend when saving clarification rounds)
+            if h.get("type") == "clarification":
+                return True
+            # Fallback: check content for clarification markers (backward compatibility)
+            content = h.get("content", "")
+            return any(marker in content for marker in CLARIFICATION_CONTENT_MARKERS)
+        
         clarification_count = sum(
             1 for h in history[-6:]
-            if h.get("role") == "assistant"
-            and "clarification" in str(h.get("metadata", {}))
+            if _is_clarification_msg(h)
         )
         MAX_CLARIFICATION_ROUNDS = 3
         if clarification_count >= MAX_CLARIFICATION_ROUNDS:

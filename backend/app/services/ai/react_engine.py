@@ -113,6 +113,61 @@ REPORT_MODE_APPENDIX = """## 报表模式
 3. 在回答末尾提示用户："报表已生成，请从右侧面板下载Excel文件"
 4. 回答保持简洁——详细数据在Excel中，这里只需给出关键统计结论"""
 
+# ── Final Answer 标记常量（小写，用于 str.find 大小写不敏感匹配）──────────
+_FA_MARKERS = [
+    "final answer:",
+    "最终回答:",
+    "最终答案:",
+    "答案:",
+]
+
+# 下一个 ReAct 标记，用于截断 Final Answer 之后的内容
+_REACT_CUTOFF_MARKERS = [
+    "\nThought:",
+    "\nAction:",
+    "\nAction Input:",
+    "\nObservation:",
+    "\nFinal Answer:",
+    "\n最终回答:",
+    "\n最终答案:",
+]
+
+
+def _find_final_answer(text: str) -> str | None:
+    """用 str.find 替代嵌套前瞻正则，定位 Final Answer 标记并提取后续全部内容。
+
+    改进点：
+    - 彻底消除 ((?:(?!lookahead).)+ ) 结构的 ReDoS 风险
+    - 支持英文/中文多种标记变体
+    - 用 _cut_at_react_marker 截断，避免把后续 Thought/Action 带入回答
+    """
+    lower = text.lower()
+    best_idx = -1
+    best_marker_len = 0
+
+    # 找最早出现的标记
+    for marker in _FA_MARKERS:
+        idx = lower.find(marker)
+        if idx != -1 and (best_idx == -1 or idx < best_idx):
+            best_idx = idx
+            best_marker_len = len(marker)
+
+    if best_idx == -1:
+        return None
+
+    content = text[best_idx + best_marker_len:].lstrip()
+    return _cut_at_react_marker(content).strip() or None
+
+
+def _cut_at_react_marker(text: str) -> str:
+    """截断到下一个 ReAct 标记行之前，防止把后续推理过程带入最终回答。"""
+    cut = len(text)
+    for marker in _REACT_CUTOFF_MARKERS:
+        pos = text.find(marker)
+        if pos != -1 and pos < cut:
+            cut = pos
+    return text[:cut]
+
 
 class ReactEngine:
     """Wraps LangChain agent for SSE-streamed ReAct reasoning."""
@@ -167,7 +222,7 @@ class ReactEngine:
         final_text = ""
 
         for step_no in range(1, MAX_STEPS + 1):
-            # Call LLM
+            # ── Call LLM with timeout ────────────────────────────────────────
             retries = 0
             llm_output = ""
             while retries <= MAX_LLM_RETRIES:
@@ -205,20 +260,15 @@ class ReactEngine:
                         return
                     await asyncio.sleep(2 ** retries)
 
-            # Check for Final Answer (support English + Chinese variants)
-            fa_match = re.search(
-                r"(?:Final Answer|最终回答|最终答案|答案)[:：]\s*(.+)",
-                llm_output, re.DOTALL | re.IGNORECASE
-            )
-            if fa_match:
-                final_text = fa_match.group(1).strip()
-                if final_text:
-                    yield SSEEvent(type="answer_chunk", data={"text_delta": "\n" + final_text})
-                    answer_buffer += "\n" + final_text
+            # ── Check for Final Answer（用 str.find 替代正则，消除 ReDoS）────
+            print(f"[ReactEngine] step={step_no}, parsing llm_output ({len(llm_output)} chars): {llm_output[:200]}", flush=True)
+            final_text = _find_final_answer(llm_output) or ""
+            if final_text:
+                yield SSEEvent(type="answer_chunk", data={"text_delta": "\n" + final_text})
+                answer_buffer += "\n" + final_text
                 break
 
-            # Parse Action — use \w+ to avoid capturing trailing () or other chars
-            print(f"[ReactEngine] step={step_no}, parsing llm_output ({len(llm_output)} chars): {llm_output[:200]}", flush=True)
+            # ── Parse Action ─────────────────────────────────────────────────
             action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", llm_output)
             if not action_match:
                 print(f"[ReactEngine] 未找到 Action, 退出循环", flush=True)
@@ -226,9 +276,6 @@ class ReactEngine:
 
             tool_name = action_match.group(1).strip()
             tool = tool_by_name.get(tool_name)
-            action_input_str = ""
-            # Parse Action Input using bracket-matching for robust JSON extraction
-            # (handles arbitrary nesting depth, unlike the old regex)
             action_input_str = _extract_action_input(llm_output)
 
             if not tool:
@@ -242,7 +289,6 @@ class ReactEngine:
 
                 if tool_input is not None:
                     try:
-                        # Extract thought text from the raw LLM output
                         thought_match = re.search(
                             r"Thought:\s*(.+?)(?=\n(?:Action|Observation|Final)|\Z)",
                             llm_output, re.DOTALL | re.IGNORECASE
@@ -276,16 +322,14 @@ class ReactEngine:
                     except Exception as e:
                         observation = f"Error executing tool: {str(e)}"
 
-            # Feed Observation back — append to internal buffer but do NOT
-            # stream as answer_chunk (it's the ReAct trace, not the answer).
             obs_text = f"\nObservation: {observation}\n"
             answer_buffer += obs_text
             messages.append(AIMessage(content=llm_output))
             messages.append(HumanMessage(content=f"Observation: {observation}"))
 
-        # ── Post-process: handle various answer quality issues ────        # ── Post-process: handle various answer quality issues ──────────────────
+        # ── Post-process ─────────────────────────────────────────────────────
 
-        # Case 1: Completely empty — LLM produced nothing at all
+        # Case 1: Completely empty
         if not answer_buffer.strip() and not chart_ids:
             print("[ReactEngine] 警告: LLM 未产生任何输出, 可能 API 返回空响应", flush=True)
             yield SSEEvent(
@@ -298,26 +342,20 @@ class ReactEngine:
             )
             return
 
-        # Try to extract a structured Final Answer
+        # Case 2: Explicit Final Answer found — nothing more to do
         final_answer = _extract_final_answer(answer_buffer)
 
-        if final_answer:
-            # Case 2: Explicit Final Answer found — nothing more to do
-            pass
-        else:
-            # Case 3: No "Final Answer:" marker — try fallback extraction
+        if not final_answer:
+            # Case 3: No Final Answer marker — try fallback extraction
             fallback = _extract_final_answer_from_buffer(answer_buffer)
 
             if fallback and len(fallback.strip()) > 10:
-                # Found meaningful content after Observations — yield it
                 print(f"[ReactEngine] 从缓冲区提取回答文本 ({len(fallback)} 字符)", flush=True)
                 yield SSEEvent(
                     type="answer_chunk",
                     data={"text_delta": fallback}
                 )
             elif chart_ids:
-                # Charts exist but no text answer — inject chart placeholders with
-                # a minimal explanation so the user isn't left with silence
                 print("[ReactEngine] 仅有图表无文本回答, 注入图表占位符", flush=True)
                 chart_placeholders = "\n\n".join(
                     f"![数据图表]({cid})" for cid in chart_ids
@@ -329,7 +367,6 @@ class ReactEngine:
                     },
                 )
             else:
-                # Nothing recoverable — report to user with a recoverable error
                 print(f"[ReactEngine] 未能提取回答, buffer预览({len(answer_buffer)} chars): {answer_buffer[:200]}", flush=True)
                 yield SSEEvent(
                     type="error",
@@ -379,6 +416,8 @@ class ReactEngine:
         return "\n".join(lines)
 
 
+# ── Helper patterns ───────────────────────────────────────────────────────────
+
 # Patterns that indicate non-answer system/error text
 _ERROR_PATTERNS = [
     r"^\d+\s+validation errors?\b",          # Pydantic: "1 validation error for ..."
@@ -399,6 +438,7 @@ _REASONING_PATTERNS = [
     r"将两个查询结果",
 ]
 
+
 def _looks_like_error(text: str) -> bool:
     """Check if text looks like an error message rather than an answer."""
     for pattern in _ERROR_PATTERNS:
@@ -410,39 +450,72 @@ def _looks_like_error(text: str) -> bool:
 def _strip_reasoning(text: str) -> str:
     """Remove LLM internal reasoning fragments from answer text."""
     for pattern in _REASONING_PATTERNS:
-        # Remove the reasoning sentence (up to next period or newline)
         text = re.sub(r"[^。\n]*?" + pattern + r"[^。\n]*[。\n]\s*", "", text)
     return text.strip()
 
 
 def _extract_final_answer(text: str) -> str:
-    """Extract answer content from the full response text.
+    """Extract Final Answer content from the full response buffer.
 
-    Handles both old ReAct format (Final Answer: marker) and new
-    tool-calling agent format (plain text after tool calls).
+    使用 _find_final_answer（str.find 实现）替代原来的嵌套前瞻正则，
+    彻底消除 ReDoS 风险，同时兼容英文/中文多种标记变体。
+
+    Fallback：若无标记，去掉所有 ReAct 标记行后返回剩余内容。
     """
-    # Try old ReAct format first — capture only until next ReAct marker
-    match = re.search(
-        r"Final Answer:\s*((?:(?!\n(?:Thought|Action|Action Input|Observation|Final\s*Answer):).)+)",
-        text, re.DOTALL | re.IGNORECASE
-    )
-    if match:
-        result = match.group(1).strip()
-        if result and not _looks_like_error(result):
-            return _strip_reasoning(result)
-    # New format: answer is the text content without tool-call markers
-    # Strip out ReAct traces if present, return remaining content
-    cleaned = re.sub(
-        r"^(Thought|Action|Action Input|Observation):.*$",
-        "",
-        text,
-        flags=re.MULTILINE
-    ).strip()
-    # Filter out error-looking lines
-    lines = cleaned.split("\n")
-    answer_lines = [l for l in lines if not _looks_like_error(l)]
+    # 主路径：str.find 定位标记
+    result = _find_final_answer(text)
+    if result and not _looks_like_error(result):
+        return _strip_reasoning(result)
+
+    # Fallback：逐行过滤 ReAct 标记行
+    lines = text.split("\n")
+    answer_lines = [
+        l for l in lines
+        if l.strip()
+        and not re.match(r"^(Thought|Action|Action Input|Observation|Final\s*Answer):", l.strip())
+        and not _looks_like_error(l.strip())
+    ]
     cleaned = "\n".join(answer_lines).strip()
     return _strip_reasoning(cleaned) if len(cleaned) > 10 else ""
+
+
+def _split_llm_segments(buffer: str) -> list[str]:
+    """将 buffer 拆分为 LLM 生成的文字行，剔除 Observation 块。
+
+    逐行扫描：遇到 Observation: 行进入「跳过模式」，
+    直到下一个 Thought:/Action:/Final Answer: 行才恢复收集。
+    这样无论 Observation 占几行（多行 JSON / 多行文本）都能正确排除。
+    同时跳过 ReAct 标记行本身，只保留标记行之后的实际内容文字。
+    """
+    _REACT_TAG = re.compile(
+        r"^(Thought|Action\s*Input|Action|Observation|Final\s*Answer)[:：]",
+        re.IGNORECASE
+    )
+
+    llm_lines: list[str] = []
+    in_observation = False
+
+    for raw_line in buffer.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if _REACT_TAG.match(line):
+            if re.match(r"^Observation[:：]", line, re.IGNORECASE):
+                in_observation = True
+            else:
+                in_observation = False
+            continue  # 标记行本身不收集
+
+        if in_observation:
+            continue  # Observation 块内容行跳过
+
+        if _looks_like_error(line):
+            continue
+
+        llm_lines.append(line)
+
+    return ["\n".join(llm_lines)] if llm_lines else []
 
 
 def _extract_final_answer_from_buffer(buffer: str) -> str:
@@ -450,8 +523,8 @@ def _extract_final_answer_from_buffer(buffer: str) -> str:
 
     Uses a layered strategy:
     1. Content after the last Observation (filtered for errors)
-    2. Chinese text segments containing data-related keywords
-    3. Last non-ReAct lines as final fallback
+    2. Chinese text segments from LLM-generated parts only（排除 Observation 块）
+    3. Last non-ReAct, non-Observation lines as final fallback
     """
     # Strategy 1: Find content after last Observation
     obs_matches = list(re.finditer(
@@ -478,28 +551,24 @@ def _extract_final_answer_from_buffer(buffer: str) -> str:
             if not _looks_like_error(result):
                 return _strip_reasoning(result)
 
-    # Strategy 2: Find Chinese text segments containing data keywords
-    chinese_segments = re.findall(
-        r"[\u4e00-\u9fff]{4,}.*?(?:数据|结果|完成|通过|人数|率|分|趋势|统计|学员|课程|平均|总分|分钟|活跃)",
-        buffer
-    )
-    if chinese_segments:
-        filtered = [s for s in chinese_segments if not _looks_like_error(s)]
-        if filtered:
-            return _strip_reasoning("\n".join(filtered[-3:]))
+    # Strategy 2: 返回 LLM 生成段落的全部文字（排除 Observation 块）
+    # 原来在整个 buffer 上做中文片段 findall，会把 Observation JSON 中文误当答案，
+    # 且非贪婪匹配会截断句子。现在改为：剔除 Observation 块后，直接返回剩余 LLM 文字。
+    llm_segments = _split_llm_segments(buffer)
+    llm_text = "\n".join(llm_segments).strip()
+    if llm_text and not _looks_like_error(llm_text):
+        return _strip_reasoning(llm_text)
 
-    # Strategy 3: Return last non-ReAct, non-error lines (up to 5)
-    all_lines = buffer.split("\n")
-    content_lines = [
-        l.strip() for l in all_lines
-        if l.strip()
-        and not re.match(r"^(Thought|Action|Action Input|Observation|Final):", l.strip())
-        and not _looks_like_error(l.strip())
-    ]
-    if content_lines:
-        return _strip_reasoning("\n".join(content_lines[-5:]))
+    # Strategy 3: 兜底——取 LLM 段落最后 5 行（llm_text 为空或全是错误时才到这里）
+    if llm_segments:
+        all_llm_lines = llm_text.split("\n")
+        content_lines = [l for l in all_llm_lines if l.strip()]
+        if content_lines:
+            return _strip_reasoning("\n".join(content_lines[-5:]))
 
     return ""
+
+
 def _summarize_params(params: dict) -> str:
     """Brief summary of tool parameters for SSE display."""
     if not isinstance(params, dict):
@@ -539,20 +608,38 @@ def _summarize_result(result) -> str:
     return s[:120] + "..." if len(s) > 120 else s
 
 
+# HTTP status codes that are transient and should be retried
+_RETRYABLE_STATUS_CODES = {
+    429,  # Too Many Requests (rate limit)
+    502,  # Bad Gateway
+    503,  # Service Unavailable
+    504,  # Gateway Timeout
+}
+
+
 def _is_retryable(exc: Exception) -> bool:
+    """Check if an exception is transient and should be retried.
+    
+    Handles:
+    - Exception class names containing Timeout/Connection/RateLimit
+    - OpenAI APIStatusError with retryable HTTP status codes (429, 502, 503, 504)
+    """
     name = type(exc).__name__
-    return any(kw in name for kw in ("Timeout", "Connection", "RateLimit"))
+    
+    # Check exception class name
+    if any(kw in name for kw in ("Timeout", "Connection", "RateLimit")):
+        return True
+    
+    # Check HTTP status code on APIStatusError (OpenAI SDK)
+    status_code = getattr(exc, "status_code", None)
+    if status_code in _RETRYABLE_STATUS_CODES:
+        return True
+    
+    return False
 
 
 def _extract_chart_data(output) -> dict | None:
-    """Extract chart data from tool output, normalizing various LangChain formats.
-
-    LangChain astream_events v2 may return tool output as:
-    - Raw dict (ideal)
-    - ToolMessage object (has .content attribute)
-    - JSON string
-    - AI Message with .content
-    """
+    """Extract chart data from tool output, normalizing various LangChain formats."""
     import json as _json
 
     # 1. Already a dict with chart_id
@@ -587,15 +674,11 @@ def _extract_chart_data(output) -> dict | None:
 def _extract_action_input(llm_output: str) -> str:
     """Extract Action Input JSON from LLM output using bracket-matching.
 
-    This replaces the fragile regex approach and correctly handles
-    arbitrarily nested JSON objects/arrays that the old regex could not.
-
     Strategy:
     1. Find "Action Input:" marker (case-insensitive)
     2. Scan forward for the first { or [ character
     3. Use bracket-matching to find the complete balanced JSON string
     """
-    # Find the Action Input marker
     marker_match = re.search(
         r"Action\s*Input\s*[:：]\s*",
         llm_output,
@@ -604,10 +687,8 @@ def _extract_action_input(llm_output: str) -> str:
     if not marker_match:
         return ""
 
-    # Start scanning after the marker
     pos = marker_match.end()
 
-    # Find the first opening bracket
     while pos < len(llm_output) and llm_output[pos] not in "{[":
         pos += 1
     if pos >= len(llm_output):
@@ -616,7 +697,6 @@ def _extract_action_input(llm_output: str) -> str:
     opening = llm_output[pos]
     closing = "}" if opening == "{" else "]"
 
-    # Bracket-matching: track depth, respect string literals
     depth = 0
     in_string = False
     escape = False
@@ -642,5 +722,4 @@ def _extract_action_input(llm_output: str) -> str:
                     return llm_output[start:pos + 1]
         pos += 1
 
-    # Unbalanced brackets — return what we have (best effort)
     return llm_output[start:]
