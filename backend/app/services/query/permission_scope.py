@@ -7,9 +7,8 @@ class PermissionScope:
 
     Rules (QueryExecutor injects the first matching column):
       role_level=0 superadmin -> no filter
-      role_level=1 admin     -> WHERE org_code = ?
-      role_level=2 teacher   -> WHERE dept_code = ?
-      role_level=3 student   -> WHERE user_id = ?
+      role_level>=1           -> WHERE dept_code = ?
+      role_level=3 student      -> WHERE user_id = ?
     """
 
     def __init__(self, user_ctx: UserContext):
@@ -27,9 +26,7 @@ class PermissionScope:
         """
         if self.role_level == 0:
             return []
-        elif self.role_level == 1:
-            return [("org_code", self.dept_code)]
-        elif self.role_level == 2:
-            return [("dept_code", self.dept_code)]
-        else:
+        elif self.role_level == 3:
             return [("user_id", self.user_id)]
+        else:
+            return [("dept_code", self.dept_code)]

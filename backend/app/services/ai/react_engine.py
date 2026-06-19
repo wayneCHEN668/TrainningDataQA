@@ -9,11 +9,13 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.schemas.auth import UserContext
 from app.schemas.sse_events import SSEEvent
+from app.services.ai.schema_index import SchemaIndexService
 
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 8
 MAX_LLM_RETRIES = 2
+DEFAULT_LLM_TIMEOUT = 60.0
 
 REACT_SYSTEM_TEMPLATE = """你是 SkillCloudHS 培训数据分析系统的智能分析引擎。
 通过 Thought -> Action -> Action Input -> Observation 循环回答用户问题。
@@ -124,6 +126,7 @@ class ReactEngine:
         tools: list,
         chat_history: list[dict] | None = None,
         llm_api_key: str | None = None,
+        schema_svc: SchemaIndexService | None = None,
     ):
         self._llm = ChatOpenAI(
             model=llm_model,
@@ -136,6 +139,19 @@ class ReactEngine:
         self._schema_context = schema_context
         self._user_ctx = user_ctx
         self._history = chat_history or []
+        self._schema_svc = schema_svc
+
+    @staticmethod
+    async def _stream_with_timeout(stream, timeout: float = DEFAULT_LLM_TIMEOUT) -> str:
+        """Collect an async LLM stream with a hard timeout to avoid hanging forever."""
+        async def _collect() -> str:
+            result = ""
+            async for chunk in stream:
+                delta = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if delta:
+                    result += delta
+            return result
+        return await asyncio.wait_for(_collect(), timeout=timeout)
 
     async def run(
         self, question: str, intent_result, output_mode: str = "analysis"
@@ -157,17 +173,20 @@ class ReactEngine:
             while retries <= MAX_LLM_RETRIES:
                 try:
                     stream = self._llm.astream(messages)
-                    async for chunk in stream:
-                        delta = chunk.content if hasattr(chunk, 'content') else str(chunk)
-                        if delta:
-                            llm_output += delta
-                            answer_buffer += delta
-                            # Do NOT stream raw LLM output as answer_chunk.
-                            # The ReAct trace (Thought/Action/Action Input) is
-                            # relayed via structured step_start/step_done events
-                            # for the ReasoningPanel. Only the Final Answer
-                            # content is sent as answer_chunk (see below).
+                    llm_output = await self._stream_with_timeout(stream)
+                    answer_buffer += llm_output
                     break
+                except asyncio.TimeoutError:
+                    print(f"[ReactEngine] LLM 调用超时 (step={step_no}, retry={retries})", flush=True)
+                    retries += 1
+                    if retries > MAX_LLM_RETRIES:
+                        yield SSEEvent(type="error", data={
+                            "code": "LLM_TIMEOUT",
+                            "message": "AI 服务响应超时，请稍后重试。",
+                            "recoverable": True,
+                        })
+                        return
+                    await asyncio.sleep(2 ** retries)
                 except Exception as exc:
                     if not _is_retryable(exc):
                         yield SSEEvent(type="error", data={

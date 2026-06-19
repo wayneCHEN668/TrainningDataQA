@@ -2,7 +2,7 @@
 import asyncio
 import json
 import time
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -38,6 +38,7 @@ router = APIRouter(prefix="/api/v1", tags=["ai-query"])
 
 @router.post("/ai-query")
 async def ai_query(
+    request: Request,
     body: AIQueryRequest,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -76,12 +77,10 @@ async def ai_query(
             })
             return
 
-        # [3] Intent classification (SchemaIndexService, load from YAML)
+        # [3] Intent classification (reuse startup SchemaIndexService singleton)
         print("[Backend SSE] [3] 开始意图分类...", flush=True)
         t3 = time.monotonic()
-        schema_svc = SchemaIndexService()
-        await schema_svc.load()
-        print(f"[Backend SSE] [3] Schema 从 YAML 文件加载完成", flush=True)
+        schema_svc: SchemaIndexService = request.app.state.schema_svc
         classifier = IntentClassifier(schema_svc=schema_svc)
 
         # Bypass re-classification when user selected a clarification option
@@ -166,6 +165,7 @@ async def ai_query(
             tools=tools,
             chat_history=history,
             llm_api_key=settings.LLM_API_KEY,
+            schema_svc=schema_svc,
         )
 
         steps_data = []

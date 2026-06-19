@@ -270,6 +270,11 @@ class ToolRegistry:
             stmt = select(*cols).where(ea.c.is_graded == True)
             if exam_session_code:
                 stmt = stmt.where(ea.c.exam_session_code == exam_session_code)
+            # Q3 time filter — by open_at
+            if time_start:
+                stmt = stmt.where(ea.c.open_at >= time_start)
+            if time_end:
+                stmt = stmt.where(ea.c.open_at <= time_end)
             rows = await self._executor.execute(stmt)
 
             if not rows:
@@ -376,8 +381,30 @@ class ToolRegistry:
                 "active_users": ods.c.active_users,
             }
             metric_col = metric_map.get(metric, ods.c.total_study_minutes)
-            cols = [ods.c.stat_date, metric_col, ods.c.active_users, ods.c.org_code]
-            stmt = select(*cols).order_by(ods.c.stat_date.asc())
+
+            # Build time-period expression based on granularity
+            if granularity == "day":
+                date_expr = func.date(ods.c.stat_date).label("period")
+            elif granularity == "month":
+                date_expr = func.date_format(ods.c.stat_date, "%Y-%m-01").label("period")
+            else:  # week (default)
+                date_expr = func.date_format(ods.c.stat_date, "%x-%v").label("period")  # ISO year-week
+
+            stmt = (
+                select(
+                    date_expr,
+                    func.sum(metric_col).label("value"),
+                )
+                .order_by(date_expr.asc())
+                .group_by(date_expr)
+            )
+
+            # Q5 time filter — by stat_date
+            if time_start:
+                stmt = stmt.where(ods.c.stat_date >= time_start)
+            if time_end:
+                stmt = stmt.where(ods.c.stat_date <= time_end)
+
             rows = await self._executor.execute(stmt)
 
             if not rows:
@@ -386,8 +413,8 @@ class ToolRegistry:
             data_points = []
             for r in rows:
                 data_points.append({
-                    "date": str(r["stat_date"]),
-                    "value": float(r[metric_col.key] if hasattr(r, metric_col.key) else r.get(metric_col.key, 0) or 0),
+                    "date": str(r["period"]),
+                    "value": float(r["value"] or 0),
                 })
 
             # Compute trend direction
@@ -541,7 +568,7 @@ class ToolRegistry:
         async def _run(time_start, time_end):
             # 1. Org daily stats aggregation
             ods = OrgDailyStats.__table__
-            agg_rows = await self._executor.execute(
+            ods_stmt = (
                 select(
                     ods.c.org_code,
                     func.sum(ods.c.total_study_minutes).label("total_study_minutes"),
@@ -551,6 +578,12 @@ class ToolRegistry:
                     func.sum(ods.c.study_sessions).label("total_sessions"),
                 ).group_by(ods.c.org_code)
             )
+            # Q8 time filter — by stat_date
+            if time_start:
+                ods_stmt = ods_stmt.where(ods.c.stat_date >= time_start)
+            if time_end:
+                ods_stmt = ods_stmt.where(ods.c.stat_date <= time_end)
+            agg_rows = await self._executor.execute(ods_stmt)
 
             org_stats = []
             for row in agg_rows:
@@ -565,7 +598,7 @@ class ToolRegistry:
 
             # 2. Course grade summary
             cg = CourseGrade.__table__
-            grade_rows = await self._executor.execute(
+            grade_stmt = (
                 select(
                     func.count().label("total_records"),
                     func.avg(cg.c.completion_rate).label("avg_completion_rate"),
@@ -573,6 +606,12 @@ class ToolRegistry:
                     func.sum(case((cg.c.is_passed == True, 1), else_=0)).label("passed_count"),
                 )
             )
+            # Q8 time filter — fallback course_grade by updated_at
+            if time_start:
+                grade_stmt = grade_stmt.where(cg.c.updated_at >= time_start)
+            if time_end:
+                grade_stmt = grade_stmt.where(cg.c.updated_at <= time_end)
+            grade_rows = await self._executor.execute(grade_stmt)
             grade_summary = grade_rows[0] if grade_rows else None
 
             return {
