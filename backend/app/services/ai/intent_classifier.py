@@ -1,5 +1,6 @@
 """Intent classifier: LLM Call #1 with dual-layer fallback."""
 import asyncio
+import json
 import logging
 import time
 from openai import AsyncOpenAI
@@ -13,6 +14,83 @@ from app.services.ai.intent_definitions import get_intent_enum_values
 from app.services.ai.clarification import ClarificationService
 
 logger = logging.getLogger(__name__)
+
+
+def _repair_truncated_json(raw: str) -> str:
+    """Attempt to repair truncated JSON by closing open brackets/braces.
+
+    When max_tokens is too small, the LLM output gets cut off mid-object,
+    e.g. '{"intent": "X", "slots": {"scope_ty'
+
+    Strategy:
+    1. Track bracket depth and string state
+    2. Find the last complete key-value pair (at a comma)
+    3. Close any open objects/arrays
+    """
+    if not raw or not raw.strip():
+        return raw
+
+    depth_brace = 0
+    depth_bracket = 0
+    in_string = False
+    escape = False
+
+    for ch in raw:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth_brace += 1
+            elif ch == "}":
+                depth_brace -= 1
+            elif ch == "[":
+                depth_bracket += 1
+            elif ch == "]":
+                depth_bracket -= 1
+
+    if depth_brace == 0 and depth_bracket == 0:
+        return raw
+
+    # Find last comma at correct depth for clean truncation
+    last_valid_pos = len(raw)
+    t_brace = 0
+    t_bracket = 0
+    t_in_string = False
+    t_escape = False
+
+    for i, ch in enumerate(raw):
+        if t_in_string:
+            if t_escape:
+                t_escape = False
+            elif ch == "\\":
+                t_escape = True
+            elif ch == '"':
+                t_in_string = False
+        else:
+            if ch == '"':
+                t_in_string = True
+            elif ch == "{":
+                t_brace += 1
+            elif ch == "}":
+                t_brace -= 1
+            elif ch == "[":
+                t_bracket += 1
+            elif ch == "]":
+                t_bracket -= 1
+            elif ch == ",":
+                last_valid_pos = i
+
+    repaired = raw[:last_valid_pos].rstrip().rstrip(",")
+    repaired += "]" * max(t_bracket, 0)
+    repaired += "}" * max(t_brace, 0)
+    return repaired
 
 
 def _build_json_schema() -> dict:
@@ -95,10 +173,10 @@ class IntentClassifier:
         print(f"[IntentClassifier] LLM Model: {self._model}", flush=True)
 
         # Layer 1 (json_schema strict mode) removed — not supported by DeepSeek/大多数模型
-        # 直接走 Layer 2: json_object mode
+        # 直接走 Layer 2: json_object mode (with retry for transient failures)
         print("[IntentClassifier] json_object mode...", flush=True)
         t2 = time.monotonic()
-        result = await self._call_with_json_object(system_prompt, question)
+        result = await self._call_with_json_object_retry(system_prompt, question)
         if result:
             print(f"[IntentClassifier] 成功, 耗时: {(time.monotonic()-t2)*1000:.0f}ms", flush=True)
             # 检测报表关键词，设置 output_mode
@@ -111,6 +189,24 @@ class IntentClassifier:
         # Fallback: raise for controller to trigger clarification
         print("[IntentClassifier] 所有层均失败, 抛出 ClassificationError", flush=True)
         raise ClassificationError("Intent classification failed at all LLM layers")
+
+    async def _call_with_json_object_retry(
+        self, system_prompt: str, question: str, max_retries: int = 1
+    ) -> IntentResult | None:
+        """Wrap _call_with_json_object with retry on transient failures.
+
+        Retries once on timeout or retryable exceptions to reduce
+        classification instability caused by network jitter.
+        """
+        last_result = None
+        for attempt in range(max_retries + 1):
+            last_result = await self._call_with_json_object(system_prompt, question)
+            if last_result is not None:
+                return last_result
+            if attempt < max_retries:
+                print(f"[IntentClassifier] 重试 {attempt + 1}/{max_retries}...", flush=True)
+                await asyncio.sleep(2 ** attempt)
+        return last_result
 
     async def _call_with_json_object(
         self, system_prompt: str, question: str
@@ -126,8 +222,8 @@ class IntentClassifier:
                         {"role": "user", "content": question},
                     ],
                     response_format={"type": "json_object"},
-                    temperature=0.15,
-                    max_tokens=500,
+                    temperature=0,  # P0 fix: deterministic output for stability
+                    max_tokens=2000,  # P0 fix: 500 was too small, caused truncation
                 ),
                 timeout=30.0,
             )
@@ -135,6 +231,16 @@ class IntentClassifier:
             print(f"[IntentClassifier] Layer 2: LLM 响应到达, 耗时: {elapsed:.0f}ms", flush=True)
             raw = resp.choices[0].message.content
             print(f"[IntentClassifier] Layer 2: 原始响应 ({len(raw)} chars): {raw[:200]}", flush=True)
+
+            # Check finish_reason — if truncated, attempt JSON repair
+            finish_reason = resp.choices[0].finish_reason
+            if finish_reason == "length":
+                print(f"[IntentClassifier] Layer 2: 响应被截断 (finish_reason=length), 尝试修复...", flush=True)
+                repaired = _repair_truncated_json(raw)
+                if repaired != raw:
+                    print(f"[IntentClassifier] Layer 2: JSON 修复后 ({len(repaired)} chars): {repaired[:200]}", flush=True)
+                    raw = repaired
+
             return IntentResult.model_validate_json(raw)
         except asyncio.TimeoutError:
             print("[IntentClassifier] Layer 2: 超时 (30s)", flush=True)

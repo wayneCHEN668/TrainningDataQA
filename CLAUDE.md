@@ -91,3 +91,16 @@ Spotify-inspired dark theme (`#121212`–`#1f1f1f`) with Spotify Green (`#1ed760
 **Do NOT use Bash heredoc to write long markdown/plan files.** Heredocs with embedded code (Python, SQL, JS) fail due to quote conflicts and special character escaping. The `Write` tool is unreliable for long content (parameter-stripping bug).
 
 **Reliable approach:** Write a Python generator script (using the `Write` tool since `.py` files are short) that constructs the content as a triple-quoted Python string and writes it to disk, then execute it with `python gen_script.py`. This avoids all escaping issues because Python triple-quoted raw strings (`r'''...'''`) handle quotes, backticks, and special characters natively. After execution, delete the generator script.
+
+##依赖库的安装
+**Python依赖库必须安装在虚拟环境中
+
+##实现备忘录
+**Implement <SPEC>. As you work maintaina running implementation-notes.html file that captures anything I should knowabout how the implementation diverges from or interprets the spec, including:
+- Design decisions: choices you made where the spec was ambiguous
+- Deviations: places where you intentionally departed from the spec, and why
+- Tradeoffs: alternatives you considered and why you picked what you did
+- Open questions: anything you'd want m¥e to confirm or revise
+
+##调试
+**UPDATE CLAUDE.MD, ADD RULES FOR ANY NEW MISTAKES

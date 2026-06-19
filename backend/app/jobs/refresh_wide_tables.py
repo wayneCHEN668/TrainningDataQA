@@ -88,9 +88,9 @@ async def refresh_learner_comprehensive() -> None:
             COUNT(DISTINCT cc.course_code) AS total_courses,
             COUNT(DISTINCT CASE WHEN lp.status = 2 THEN lp.course_code END) AS courses_completed,
             COALESCE(AVG(cg.completion_rate), 0) AS completion_rate,
-            COALESCE(SUM(ssl.stopped_at IS NOT NULL * TIMESTAMPDIFF(MINUTE, ssl.started_at, ssl.stopped_at)), 0),
-            COUNT(DISTINCT ssl.id),
-            MAX(ssl.started_at)
+            COALESCE(SUM((slog.stopped_at IS NOT NULL) * TIMESTAMPDIFF(MINUTE, slog.started_at, slog.stopped_at)), 0),
+            COUNT(DISTINCT slog.id),
+            MAX(slog.started_at)
         FROM user_info u
         LEFT JOIN department d ON u.dept_code = d.dept_code
         LEFT JOIN class_course cc ON EXISTS (
@@ -98,7 +98,7 @@ async def refresh_learner_comprehensive() -> None:
         )
         LEFT JOIN learning_progress lp ON u.user_id = lp.user_id AND cc.course_code = lp.course_code
         LEFT JOIN course_grade cg ON u.user_id = cg.user_id AND cc.course_code = cg.course_code
-        LEFT JOIN study_session_log ssl ON u.user_id = ssl.user_id
+        LEFT JOIN study_session_log slog ON u.user_id = slog.user_id
         WHERE u.deleted_at IS NULL AND u.role_level = 3
         GROUP BY u.user_id, u.user_code, u.user_name, u.dept_code, d.dept_name, d.org_code
         ON DUPLICATE KEY UPDATE

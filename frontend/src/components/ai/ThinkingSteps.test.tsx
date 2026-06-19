@@ -23,7 +23,7 @@ const doneStep: ThinkingStep = {
 describe("ThinkingSteps", () => {
   it("renders running step with animated indicator", () => {
     render(<ThinkingSteps steps={[runningStep]} />);
-    expect(screen.getByText("Step 1")).toBeInTheDocument();
+    expect(screen.getByText("第1步")).toBeInTheDocument();
     expect(screen.getByText("call_knowledge_base")).toBeInTheDocument();
     // Running step renders a spinning Loader2 icon; done steps render a Check icon.
     // We verify the step content is present.
@@ -32,7 +32,7 @@ describe("ThinkingSteps", () => {
 
   it("renders done step with result summary", () => {
     render(<ThinkingSteps steps={[doneStep]} />);
-    expect(screen.getByText("Step 2")).toBeInTheDocument();
+    expect(screen.getByText("第2步")).toBeInTheDocument();
     expect(screen.getByText("Found 5 results")).toBeInTheDocument();
   });
 });

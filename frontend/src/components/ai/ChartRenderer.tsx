@@ -186,7 +186,7 @@ export function ChartRenderer({ spec }: ChartRendererProps) {
       return (
         <div className="flex items-center justify-center h-[280px] bg-bg-card rounded-lg">
           <p className="text-text-subdued text-sm">
-            Unknown chart type: {spec.chartType}
+            未知图表类型：{spec.chartType}
           </p>
         </div>
       );

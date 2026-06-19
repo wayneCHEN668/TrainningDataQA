@@ -90,3 +90,37 @@ class BenchmarkInput(BaseModel):
 class SearchCourseExamInput(BaseModel):
     query: str = Field(description="Fuzzy course or exam name to search")
     search_type: str = Field(default="all", description="course/exam/all")
+
+
+# -- V1: generate_chart_spec (Pure-LLM tool) --
+class ChartSpecInput(BaseModel):
+    chart_type: str = Field(description="bar/line/pie")
+    title: str = Field(description="Chart title in Chinese")
+    data: list[dict] = Field(description="Data points for the chart, e.g. [{name, value}] or [{date, value}]")
+    x_key: str = Field(default="name", description="Key for x-axis / category")
+    y_key: str = Field(default="value", description="Key for y-axis / value")
+    color: str = Field(default="#4f8ef7", description="Primary color hex code")
+
+
+# -- New tools added for Phase 7 (fixing test gaps) --
+
+class RoleDistributionInput(BaseModel):
+    """Count users by role_level with optional dept grouping."""
+    group_by: str = Field(default="role", description="role/dept/both")
+
+
+class ClassStudentsInput(BaseModel):
+    """List students in a specific class."""
+    class_code: str = Field(description="Class code, e.g. 'class2026'")
+    include_profile: bool = Field(default=False, description="Include extended profile details")
+
+
+class DeptClassesInput(BaseModel):
+    """List classes under a department with student counts."""
+    dept_code: str = Field(description="Department code, e.g. 'DEPT01'")
+
+
+class EntityCountInput(BaseModel):
+    """Count entities in a given table."""
+    entity_type: str = Field(description="Entity type: course/exam/user/class/dept/org")
+    scope_type: str = Field(default="all", description="Scope filter: all/org/dept")

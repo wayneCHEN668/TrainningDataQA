@@ -1,62 +1,29 @@
-"""Unit tests for session manager (mock Redis)."""
-import json
+"""Unit tests for session manager (mock DB)."""
 import pytest
-from unittest.mock import AsyncMock, MagicMock
-from app.services.ai.session_manager import (
-    load_chat_history, save_chat_history,
-    CHAT_HISTORY_TTL, MAX_HISTORY_ENTRIES,
-)
+from unittest.mock import AsyncMock
+from app.services.ai.session_manager import log_qa_session
 
 
-class TestLoadChatHistory:
+class TestLogQaSession:
     @pytest.mark.asyncio
-    async def test_no_redis_returns_empty(self):
-        result = await load_chat_history(None, "s1", "u1")
-        assert result == []
+    async def test_logs_session(self):
+        db = AsyncMock()
+        db.execute = AsyncMock()
+        db.commit = AsyncMock()
+        await log_qa_session(
+            db, "sid1", "uid1", "dept1", "how are you?",
+            "grade_query", "simple",
+            ["grades"], ["get_grade"], 2, 5000, 0,
+        )
+        db.execute.assert_called_once()
+        db.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_no_session_id_returns_empty(self):
-        redis = AsyncMock()
-        result = await load_chat_history(redis, None, "u1")
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_loads_existing_history(self):
-        redis = AsyncMock()
-        redis.get = AsyncMock(return_value=json.dumps([
-            {"role": "user", "content": "hello"},
-        ]))
-        result = await load_chat_history(redis, "s1", "u1")
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-
-
-class TestSaveChatHistory:
-    @pytest.mark.asyncio
-    async def test_no_redis_skips(self):
-        await save_chat_history(None, "s1", "u1", "q", "a")
+    async def test_exception_is_silent(self):
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=Exception("DB down"))
         # Should not raise
-
-    @pytest.mark.asyncio
-    async def test_no_session_id_skips(self):
-        redis = AsyncMock()
-        await save_chat_history(redis, None, "u1", "q", "a")
-        redis.set.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_caps_at_max_entries(self):
-        redis = AsyncMock()
-        existing = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
-        redis.get = AsyncMock(return_value=json.dumps(existing))
-        captured_value = None
-
-        async def mock_set(key, value, ex):
-            nonlocal captured_value
-            captured_value = value
-
-        redis.set = mock_set
-        await save_chat_history(redis, "s1", "u1", "new_q", "new_a")
-        saved = json.loads(captured_value)
-        assert len(saved) == MAX_HISTORY_ENTRIES  # 6
-        assert saved[-2]["content"] == "new_q"
-        assert saved[-1]["content"] == "new_a"
+        await log_qa_session(
+            db, "sid1", "uid1", "dept1", "q",
+            None, None, [], [], 0, 0, 0,
+        )

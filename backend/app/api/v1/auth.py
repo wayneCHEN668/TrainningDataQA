@@ -14,7 +14,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user_code or password",
+            detail="无效的用户名或密码",
         )
     token = create_access_token(data=user.model_dump())
     return TokenResponse(

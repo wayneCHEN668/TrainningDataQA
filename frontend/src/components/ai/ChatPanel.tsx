@@ -3,7 +3,6 @@ import { Send } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
 import { useAIQuery } from "../../hooks/useAIQuery";
 import { MessageList } from "./MessageList";
-import { SuggestedQuestions } from "./SuggestedQuestions";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");

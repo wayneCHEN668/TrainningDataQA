@@ -3,10 +3,11 @@ import logging
 from datetime import date
 from pathlib import Path
 from app.core.database import AsyncSessionLocal
-from app.core.redis import redis_pool
 from app.services.ai.evolution_analyzer import EvolutionAnalyzer
 
 logger = logging.getLogger(__name__)
+
+EVOLUTION_DIR = Path("../doc/evolution")
 
 
 async def run_daily_evolution():
@@ -16,21 +17,18 @@ async def run_daily_evolution():
             analyzer = EvolutionAnalyzer(db)
             report = await analyzer.analyze(days=7)
 
+            # Ensure output directory
+            EVOLUTION_DIR.mkdir(parents=True, exist_ok=True)
+
             # Write markdown report
             today = date.today().isoformat()
-            report_dir = Path("../doc/analysis")
-            report_dir.mkdir(parents=True, exist_ok=True)
-            report_path = report_dir / f"{today}-evolution-report.md"
-            report_path.write_text(report.to_markdown(), encoding="utf-8")
+            md_path = EVOLUTION_DIR / f"{today}-evolution-report.md"
+            md_path.write_text(report.to_markdown(), encoding="utf-8")
 
-            # Cache to Redis
-            if redis_pool:
-                await redis_pool.set(
-                    "evolution_stats:daily",
-                    report.to_summary_json(),
-                    ex=86400 * 7,
-                )
+            # Write JSON summary (for admin API)
+            json_path = EVOLUTION_DIR / f"{today}-summary.json"
+            json_path.write_text(report.to_summary_json(), encoding="utf-8")
 
-            logger.info("Evolution report generated: %s", report_path)
+            logger.info("Evolution report generated: %s", md_path)
     except Exception:
         logger.exception("Evolution job failed")

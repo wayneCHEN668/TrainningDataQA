@@ -1,6 +1,11 @@
 import type { ThinkingStep } from "../../types/chat";
 import { Check, Loader2 } from "lucide-react";
 
+/** Strip markdown bold (**text**) formatting from text. */
+function stripBold(text: string): string {
+  return text.replace(/\*\*/g, "");
+}
+
 interface ThinkingStepsProps {
   steps: ThinkingStep[];
 }
@@ -24,7 +29,7 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
   if (steps.length === 0) {
     return (
       <div className="text-text-subdued text-sm px-4 py-6 text-center">
-        No thinking steps yet.
+        暂无思考步骤。
       </div>
     );
   }
@@ -32,7 +37,7 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
   return (
     <div className="px-4 py-3">
       <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">
-        Reasoning
+        思考过程
       </h3>
       <div className="relative">
         {/* Vertical line */}
@@ -50,18 +55,23 @@ export function ThinkingSteps({ steps }: ThinkingStepsProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold text-text-primary">
-                    Step {step.stepNo}
+                    第{step.stepNo}步
                   </span>
                   <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-bg-card text-[#1ed760]">
                     {step.action}
                   </span>
                 </div>
+                {step.thought && (
+                  <p className="text-xs text-text-secondary mb-1 leading-relaxed">
+                    💭 {stripBold(step.thought)}
+                  </p>
+                )}
                 <p className="text-xs text-text-secondary mb-1">
-                  {step.paramsSummary}
+                  {stripBold(step.paramsSummary)}
                 </p>
                 {step.resultSummary && (
                   <p className="text-xs text-text-subdued italic">
-                    {step.resultSummary}
+                    {stripBold(step.resultSummary)}
                   </p>
                 )}
               </div>

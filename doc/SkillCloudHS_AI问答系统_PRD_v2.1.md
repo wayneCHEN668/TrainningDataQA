@@ -6,13 +6,13 @@
 
 | 属性 | 内容 |
 | ----- | ----- |
-| 文档版本 | v2.1（在 v2.0 基础上更新技术栈，整合 DB Schema Index） |
-| 更新日期 | 2026-06-10 |
+| 文档版本 | v2.2（实现阶段更新，记录实际架构与 PRD 的差异） |
+| 更新日期 | 2026-06-14 |
 | 后端 | Python 3.11 \+ FastAPI \+ SQLAlchemy 2.0 \+ LangChain |
-| 前端 | React 18 \+ TypeScript 5 \+ Tailwind CSS v4 \+ shadcn/ui |
-| 数据库 | MySQL 8.0 \+ Redis 7 |
-| AI 接入 | OpenAI-Compatible LLM API（私有化部署优先,开发阶段使用云服务） |
-| Schema 索引 | db\_table\_index.yaml \+ SchemaIndexService |
+| 前端 | React 19 \+ TypeScript 5 \+ Tailwind CSS v4 \+ shadcn/ui |
+| 数据库 | MySQL 8.0（Redis 已移除，Schema 直接从 YAML 加载） |
+| AI 接入 | OpenAI-Compatible LLM API（DashScope qwen3.6-flash） |
+| Schema 索引 | db\_table\_index.yaml \+ SchemaIndexService（纯 YAML，无 Redis 缓存） |
 | 流式输出 | Server-Sent Events（FastAPI StreamingResponse） |
 
 # **1\. 产品概述**
@@ -253,4 +253,118 @@ AI 数据问答系统是 SkillCloudHS 平台的核心智能分析层，允许管
 | Phase 6 · React 前端 | 第15-17周 | Chat UI / ThinkingSteps / ChartRenderer / Zustand Store | 非技术用户可独立使用，图表渲染正确 |
 | Phase 7 · 进化机制 | 第18-19周 | qa\_session\_log \+ 日志分析 Job \+ 自动模板生成 | 运行2周后自动生成至少3个有效新模板 |
 | Phase 8 · 调优上线 | 第20周 | Prompt 调优、性能压测、安全审计、生产部署 | P95 \< 20s，并发50无超时，权限测试通过 |
+
+# **15\. 实现现状（v2.2 实际架构）**
+
+本章记录截至 2026-06-14 的实际实现，标注与 PRD v2.1 原始设计的差异。
+
+## **15.1 与 PRD 原始设计的关键差异**
+
+| 维度 | PRD v2.1 设计 | 实际实现 |
+| ----- | ----- | ----- |
+| Redis | Schema 索引缓存、会话状态 | **已移除** — SchemaIndexService 直接从 YAML 加载，进化报告写入 `doc/evolution/` 目录的 md+JSON 文件 |
+| 前端框架 | React 18 | **React 19** |
+| AI 模型 | Qwen3.5 / DeepSeek-V4 私有化 | **DashScope qwen3.6-flash-2026-04-16**（开发阶段云服务） |
+| ReAct Agent | AgentExecutor | LangChain `create_agent()` + `astream_events()` v2 |
+| 工具数量 | 16 个 | 实际 **14 个**（合并/简化部分工具） |
+| 意图分类 | 单层 json_object | **双层**：json_schema strict → json_object fallback |
+| 路由方式 | `@router.get("/ai-query")` | **POST /api/v1/ai-query**（JSON body） |
+
+## **15.2 布局架构（左右分栏）**
+
+```
+┌───────────────────────────────┬────────────────────────────────┐
+│  ChatPanel（左，flex-1）       │  ReasoningPanel（右，w-1/2）    │
+│                                │                                │
+│  ┌──────────────────────────┐ │  ┌──────────────────────────┐  │
+│  │ MessageList              │ │  │ 思考过程           [✕]  │  │
+│  │  ├ MessageBubble (user)  │ │  ├──────────────────────────┤  │
+│  │  └ MessageBubble (ai)    │ │  │                          │  │
+│  │    markdown → HTML       │ │  │ 问题 1: 上周培训的学员... │  │
+│  │    表格、列表、标题       │ │  │ ▶ 思考过程 (2/2 步) 折叠 │  │
+│  │    图表占位符→文字引用    │ │  │                          │  │
+│  └──────────────────────────┘ │  │ 📊 上周每日学习时长趋势   │  │
+│                                │  │ [ChartRenderer 展开]     │  │
+│  ┌──────────────────────────┐ │  │                          │  │
+│  │ 输入框 + 发送按钮        │ │  │ 问题 2: ...              │  │
+│  └──────────────────────────┘ │  │ ▶ 思考过程 (3/3 步) 折叠 │  │
+│                                │  │ [ChartRenderer 展开]     │  │
+└───────────────────────────────┴────────────────────────────────┘
+```
+
+**左侧（ChatPanel）**：消息列表 + 输入区。AI 回复使用 `react-markdown` + `remark-gfm` 渲染 Markdown → HTML（支持表格、列表、标题、粗体、代码块等）。图表占位符 `![标题](chart_id)` 被替换为引用块 `> 📊 **标题**（请在右侧思考面板查看）`。`Final Answer:` 及之后的所有 ReAct 格式残留被截断清理。
+
+**右侧（ReasoningPanel）**：每轮问答的思考步骤默认**折叠**，点击展开（显示步骤时间线）。图表始终**展开**显示，带中文标题。历史轮次按"问题 N: …"分组。
+
+## **15.3 前端组件对照**
+
+| PRD 组件 | 实际文件 | 状态 |
+| ----- | ----- | ----- |
+| ChatInterface.tsx | `frontend/src/components/ai/ChatInterface.tsx` | ✅ 左右分栏布局 |
+| — | `frontend/src/components/ai/ChatPanel.tsx` | ✅ 左侧面板（消息+输入） |
+| MessageList.tsx | `frontend/src/components/ai/MessageList.tsx` | ✅ 消息列表 |
+| MessageBubble.tsx | `frontend/src/components/ai/MessageBubble.tsx` | ✅ Markdown→HTML，图表占位符替换，ReAct 残留清理 |
+| ThinkingSteps.tsx | `frontend/src/components/ai/ThinkingSteps.tsx` | ✅ 步骤时间线（绿色完成/蓝色运行中） |
+| — | `frontend/src/components/ai/ReasoningPanel.tsx` | ✅ 右侧面板（折叠步骤 + 展开图表） |
+| ChartRenderer.tsx | `frontend/src/components/ai/ChartRenderer.tsx` | ✅ Bar/Line/Pie 三种图表 |
+| StreamingAnswer.tsx | 已移除 | 整合进 MessageBubble |
+| EvidencePanel.tsx | 未实现 | 数据依据通过 step_done 的 resultSummary 显示 |
+| SuggestedQuestions.tsx | `frontend/src/components/ai/SuggestedQuestions.tsx` | ✅ |
+| FeedbackButtons.tsx | `frontend/src/components/ai/FeedbackButtons.tsx` | ✅ 点赞/踩 |
+| ClarificationOptions.tsx | `frontend/src/components/ai/ClarificationOptions.tsx` | ✅ 澄清选项 |
+| useAIQuery.ts | `frontend/src/hooks/useAIQuery.ts` | ✅ SSE 事件解析 + 状态管理 |
+| chatStore.ts | `frontend/src/stores/chatStore.ts` | ✅ Zustand（messages/rounds/currentSteps/currentCharts） |
+| — | `frontend/src/stores/authStore.ts` | ✅ 登录状态管理 |
+| — | `frontend/src/types/chat.ts` | ✅ TypeScript 类型定义 |
+
+## **15.4 后端组件对照**
+
+| PRD 组件 | 实际文件 | 状态 |
+| ----- | ----- | ----- |
+| main.py | `backend/app/main.py` | ✅ FastAPI + lifespan（无 Redis） |
+| ai_query.py | `backend/app/api/v1/ai_query.py` | ✅ POST SSE 端点（无 Redis 依赖） |
+| auth.py | `backend/app/api/v1/auth.py` | ✅ JWT 登录 |
+| admin.py | `backend/app/api/v1/admin.py` | ✅ 从 `doc/evolution/` 文件系统读取进化报告 |
+| SchemaIndexService | `backend/app/services/ai/schema_index.py` | ✅ YAML 直接加载（Redis 可选，实际不使用） |
+| IntentClassifier | `backend/app/services/ai/intent_classifier.py` | ✅ 双层 LLM（json_schema + json_object）+ Pydantic field_validator |
+| ReactEngine | `backend/app/services/ai/react_engine.py` | ✅ LangChain agent + SSE streaming + chart_ready + EMPTY_RESPONSE 检测 |
+| ToolRegistry | `backend/app/services/query/tool_registry.py` | ✅ 14 个工具 |
+| QueryExecutor | 整合进 ToolRegistry | ✅ 权限注入 |
+| EvolutionAnalyzer | `backend/app/services/ai/evolution_analyzer.py` | ✅ qa_session_log 分析 |
+| evolution_job | `backend/app/jobs/evolution_job.py` | ✅ 每日报告 → `doc/evolution/*.md` + `*-summary.json` |
+| config.py | `backend/app/core/config.py` | ✅ 无 REDIS_URL |
+| redis.py | **已删除** | — |
+
+## **15.5 SSE 事件类型（实际）**
+
+| 事件类型 | 触发时机 | Payload 关键字段 |
+| ----- | ----- | ----- |
+| `intent_resolved` | 意图识别完成 | `intent`, `complexity`, `confidence` |
+| `clarification_options` | 意图模糊，需要用户澄清 | `options[{index, text, intent}]` |
+| `step_start` | 工具调用开始 | `step_no`, `action`, `params_summary` |
+| `step_done` | 工具调用完成 | `step_no`, `tool_name`, `result_summary` |
+| `chart_ready` | 图表规格生成 | `chartId`, `chartType`, `title`, `rechartsSpec` |
+| `answer_chunk` | 答案文字流式输出 | `text_delta` |
+| `evidence` | 数据依据（保留，当前未主动发送） | — |
+| `done` | 全部完成 | `steps`, `total_steps` |
+| `error` | 错误 | `code`, `message`, `recoverable` |
+
+## **15.6 关键设计决策记录**
+
+1. **图表分离**：图表仅在右侧 ReasoningPanel 显示，左侧 MessageBubble 中将 `![title](chart_id)` 替换为 `> 📊 **title**（请在右侧思考面板查看）` 引用块
+2. **ReAct 残留清理**：LLM 有时会输出 `Final Answer:` 标记及重复内容，前端自动截断 `Final Answer:` 之后的所有文本
+3. **思考步骤折叠**：每轮的思考步骤默认折叠，显示"N/M 步"统计，点击展开查看完整时间线
+4. **空响应保护**：ReactEngine 在 LLM 无输出时（0 事件）主动发送 `EMPTY_RESPONSE` 错误给前端
+5. **强制工具调用**：System prompt 约束 #8 要求每个数据问题必须调用工具，不得复用聊天历史中的数据
+6. **进化报告文件存储**：替代 Redis 缓存，报告写入 `doc/evolution/YYYY-MM-DD-evolution-report.md` 和 `YYYY-MM-DD-summary.json`，Admin API 读取最新 JSON 文件
+
+## **15.7 API 端点（实际）**
+
+| 方法 | 路径 | 说明 |
+| ----- | ----- | ----- |
+| POST | `/api/v1/auth/login` | 用户登录（返回 JWT） |
+| POST | `/api/v1/ai-query` | AI 问答（SSE 流式响应） |
+| GET | `/api/v1/admin/stats` | 进化报告统计（Admin） |
+| GET | `/api/v1/admin/schema-refresh` | 手动刷新 Schema 缓存 |
+| GET | `/api/v1/health` | 健康检查 |
 

@@ -3,10 +3,10 @@ interface SuggestedQuestionsProps {
 }
 
 const DEFAULT_QUESTIONS = [
-  "What is the pass rate for ISTQB CTFL in 2025?",
-  "How does page object model improve test automation?",
-  "Compare risk-based vs requirements-based testing",
-  "Generate a sample test plan for a login feature",
+  "2025年ISTQB CTFL的通过率是多少？",
+  "页面对象模型如何改进测试自动化？",
+  "比较基于风险的测试与基于需求的测试",
+  "为登录功能生成一个示例测试计划",
 ];
 
 export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {

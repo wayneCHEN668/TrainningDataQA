@@ -1,16 +1,32 @@
+# Phase 7 自我进化机制 实施计划
+
+> **For agentic workers:** Use superpowers:subagent-driven-development to implement.
+
+**Goal:** 实现每日自动分析 QA 日志和未匹配问题，生成改进报告 + Admin stats API。
+
+**Architecture:** EvolutionAnalyzer 分析 qa_session_log + unmatched_queries.md, 生成 Markdown 报告 + Redis 缓存, Admin API 提供查询。
+
+---
+
+### Task 1: EvolutionAnalyzer
+
+**Files:**
+- Create: `backend/app/services/ai/evolution_analyzer.py`
+
+- [ ] **Step 1: Write evolution_analyzer.py**
+
+```python
 """QA log analyzer for daily evolution reports."""
-import asyncio
-import json
+import re
 import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-# Relative to CWD (backend/) at runtime — matches clarification.py convention
 UNMATCHED_QUERIES_PATH = Path("../doc/unmatched_queries.md")
 
 LOW_QUALITY_RULES = {
@@ -19,7 +35,6 @@ LOW_QUALITY_RULES = {
     "too_many_steps": "steps_count >= 7",
     "too_slow": "duration_ms > 30000",
 }
-LOW_QUALITY_CONDITION = " OR ".join(LOW_QUALITY_RULES.values())
 
 
 @dataclass
@@ -58,7 +73,7 @@ class EvolutionReport:
     unmatched: UnmatchedSummary
 
     def to_summary_json(self) -> str:
-        top10 = self.intent_distribution[:10]
+        import json
         return json.dumps({
             "period_days": self.period_days,
             "generated_at": self.generated_at,
@@ -69,63 +84,62 @@ class EvolutionReport:
             },
             "top_intents": [
                 {"intent": s.intent, "count": s.count}
-                for s in top10
+                for s in self.intent_distribution[:10]
             ],
             "unmatched_new": self.unmatched.total_new_this_week,
             "unmatched_total": self.unmatched.total_accumulated,
         }, ensure_ascii=False)
 
     def to_markdown(self) -> str:
-        top10 = self.intent_distribution[:10]
         lines = [
-            "# SkillCloudHS Evolution Report",
-            "",
+            f"# SkillCloudHS Evolution Report",
+            f"",
             f"**Date**: {self.generated_at}  |  **Period**: past {self.period_days} days",
-            "",
-            "## S1 Overall Metrics",
-            "",
-            "| Metric | Value |",
-            "|--------|-------|",
+            f"",
+            f"## S1 Overall Metrics",
+            f"",
+            f"| Metric | Value |",
+            f"|--------|-------|",
             f"| Total Q&A | {self.overall.total_qa} |",
             f"| Avg Duration (ms) | {self.overall.avg_duration_ms:.0f} |",
             f"| Avg Tokens | {self.overall.avg_tokens:.0f} |",
             f"| Low Quality Rate | {self.overall.low_quality_rate:.1%} |",
             f"| Satisfaction Rate | {self.overall.satisfaction_rate:.1%} |",
-            "",
-            "## S2 Intent Distribution (Top 10)",
-            "",
-            "| Intent | Count | Share | Low Quality | Avg Duration |",
-            "|--------|-------|-------|-------------|-------------|",
+            f"",
+            f"## S2 Intent Distribution (Top 10)",
+            f"",
+            f"| Intent | Count | Share | Low Quality | Avg Duration |",
+            f"|--------|-------|-------|-------------|-------------|",
         ]
-        for s in top10:
+        for s in self.intent_distribution[:10]:
             flag = " **HIGH**" if s.low_quality_rate > 0.2 else ""
             lines.append(
                 f"| {s.intent} | {s.count} | {s.pct:.1%} | {s.low_quality_rate:.1%}{flag} | {s.avg_duration_ms:.0f}ms |"
             )
         lines += [
-            "",
-            "## S3 Unmatched Queries",
-            "",
-            "| Type | Count |",
-            "|------|-------|",
+            f"",
+            f"## S3 Unmatched Queries",
+            f"",
+            f"| Type | Count |",
+            f"|------|-------|",
             f"| New this week | {self.unmatched.total_new_this_week} |",
             f"| Accumulated total | {self.unmatched.total_accumulated} |",
-            "",
+            f"",
         ]
         if self.unmatched.top_patterns:
             lines.append("**Common patterns**:")
             for p in self.unmatched.top_patterns:
                 lines.append(f"- {p}")
         lines += [
-            "",
-            "## S4 Improvement Suggestions",
-            "",
+            f"",
+            f"## S4 Improvement Suggestions",
+            f"",
         ]
-        for s in top10:
+        for s in self.intent_distribution[:10]:
             if s.low_quality_rate > 0.2:
                 lines.append(f"- **[TEMPLATE] {s.intent}**: low quality rate {s.low_quality_rate:.1%}, consider optimizing ReAct prompt or tool descriptions")
         if self.unmatched.top_patterns:
-            lines.append("- **[NEW INTENT]**: Top patterns from unmatched queries may need new intent types or keyword rules")
+            lines.append(f"- **[NEW INTENT]**: Top patterns from unmatched queries may need new intent types or keyword rules")
         return "\n".join(lines)
 
 
@@ -134,10 +148,9 @@ class EvolutionAnalyzer:
         self._db = db
 
     async def analyze(self, days: int = 7) -> EvolutionReport:
-        overall, intent_stats = await asyncio.gather(
-            self._query_overall_metrics(days),
-            self._query_intent_distribution(days),
-        )
+        overall = await self._query_overall_metrics(days)
+        intent_stats = await self._query_intent_distribution(days)
+        low_quality = await self._query_low_quality(days)
         unmatched = self._parse_unmatched_queries()
 
         return EvolutionReport(
@@ -145,18 +158,18 @@ class EvolutionAnalyzer:
             generated_at=date.today().isoformat(),
             overall=overall,
             intent_distribution=intent_stats,
-            low_quality_items=[],  # TODO: consume in report output when S4 is expanded
+            low_quality_items=low_quality,
             unmatched=unmatched,
         )
 
     async def _query_overall_metrics(self, days: int) -> OverallMetrics:
         since = date.today() - timedelta(days=days)
-        result = await self._db.execute(text(f"""
+        result = await self._db.execute(text("""
             SELECT
                 COUNT(*) AS total,
                 COALESCE(AVG(duration_ms), 0) AS avg_duration,
                 COALESCE(AVG(total_tokens), 0) AS avg_tokens,
-                SUM(CASE WHEN {LOW_QUALITY_CONDITION} THEN 1 ELSE 0 END) AS low_quality_count,
+                SUM(CASE WHEN user_feedback = -1 OR fallback_used = 1 OR steps_count >= 7 OR duration_ms > 30000 THEN 1 ELSE 0 END) AS low_quality_count,
                 SUM(CASE WHEN user_feedback = 1 THEN 1 ELSE 0 END) AS positive_feedback
             FROM qa_session_log
             WHERE asked_at >= :since
@@ -175,12 +188,12 @@ class EvolutionAnalyzer:
 
     async def _query_intent_distribution(self, days: int) -> list[IntentStat]:
         since = date.today() - timedelta(days=days)
-        result = await self._db.execute(text(f"""
+        result = await self._db.execute(text("""
             SELECT
                 intent,
                 COUNT(*) AS cnt,
                 COALESCE(AVG(duration_ms), 0) AS avg_dur,
-                SUM(CASE WHEN {LOW_QUALITY_CONDITION} THEN 1 ELSE 0 END) AS low_cnt
+                SUM(CASE WHEN user_feedback = -1 OR fallback_used = 1 OR steps_count >= 7 OR duration_ms > 30000 THEN 1 ELSE 0 END) AS low_cnt
             FROM qa_session_log
             WHERE asked_at >= :since AND intent IS NOT NULL
             GROUP BY intent
@@ -201,11 +214,11 @@ class EvolutionAnalyzer:
 
     async def _query_low_quality(self, days: int) -> list[dict]:
         since = date.today() - timedelta(days=days)
-        result = await self._db.execute(text(f"""
+        result = await self._db.execute(text("""
             SELECT question, intent, user_feedback, fallback_used, steps_count, duration_ms, asked_at
             FROM qa_session_log
             WHERE asked_at >= :since
-              AND ({LOW_QUALITY_CONDITION})
+              AND (user_feedback = -1 OR fallback_used = 1 OR steps_count >= 7 OR duration_ms > 30000)
             ORDER BY asked_at DESC
         """), {"since": since})
         return [dict(r) for r in result.mappings()]
@@ -216,7 +229,8 @@ class EvolutionAnalyzer:
             return UnmatchedSummary(total_new_this_week=0, total_accumulated=0, top_patterns=[])
 
         lines = path.read_text(encoding="utf-8").splitlines()
-        # Skip header lines (title, separator, header row)
+        total_accumulated = sum(1 for l in lines if l.startswith("| ") and "|" in l[2:])
+        # Header is 3 lines (title + separator + header row), skip those
         data_lines = [l for l in lines if l.startswith("| ") and "|" in l[2:] and not l.startswith("| Time")]
         total_accumulated = len(data_lines)
 
@@ -254,3 +268,181 @@ class EvolutionAnalyzer:
             if kw in question:
                 patterns.append(kw)
         return patterns if patterns else [question[:10]]
+```
+
+- [ ] **Step 2: Verify import**
+
+```bash
+cd backend && python -c "from app.services.ai.evolution_analyzer import EvolutionAnalyzer; print('OK')"
+```
+
+- [ ] **Step 3: Commit**
+
+---
+
+### Task 2: Evolution Job + Scheduler
+
+**Files:**
+- Create: `backend/app/jobs/evolution_job.py`
+- Modify: `backend/app/jobs/scheduler.py`
+
+- [ ] **Step 1: Write evolution_job.py**
+
+```python
+"""Daily evolution job: analyze QA logs + unmatched queries -> report."""
+import logging
+from datetime import date
+from pathlib import Path
+from app.core.database import AsyncSessionLocal
+from app.core.redis import redis_pool
+from app.services.ai.evolution_analyzer import EvolutionAnalyzer
+
+logger = logging.getLogger(__name__)
+
+
+async def run_daily_evolution():
+    """Daily 02:00: analyze qa_session_log + unmatched_queries.md -> generate report."""
+    try:
+        async with AsyncSessionLocal() as db:
+            analyzer = EvolutionAnalyzer(db)
+            report = await analyzer.analyze(days=7)
+
+            # Write markdown report
+            today = date.today().isoformat()
+            report_dir = Path("../doc/analysis")
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_path = report_dir / f"{today}-evolution-report.md"
+            report_path.write_text(report.to_markdown(), encoding="utf-8")
+
+            # Cache to Redis
+            if redis_pool:
+                await redis_pool.set(
+                    "evolution_stats:daily",
+                    report.to_summary_json(),
+                    ex=86400 * 7,
+                )
+
+            logger.info("Evolution report generated: %s", report_path)
+    except Exception:
+        logger.exception("Evolution job failed")
+```
+
+- [ ] **Step 2: Register in scheduler.py**
+
+Add to `register_jobs()`:
+```python
+from app.jobs.evolution_job import run_daily_evolution
+
+scheduler.add_job(
+    run_daily_evolution,
+    trigger="cron",
+    hour=2, minute=0,
+    id="daily_evolution",
+    name="Generate daily evolution report",
+    replace_existing=True,
+)
+```
+
+- [ ] **Step 3: Verify scheduler has 6 jobs**
+
+```bash
+cd backend && python -c "
+from app.jobs.scheduler import scheduler, register_jobs
+register_jobs()
+jobs = scheduler.get_jobs()
+print(f'Jobs: {len(jobs)}')
+for j in jobs: print(f'  - {j.id}')
+"
+```
+Expected: 6 jobs.
+
+- [ ] **Step 4: Commit**
+
+---
+
+### Task 3: Admin Stats API
+
+**Files:**
+- Create: `backend/app/api/v1/admin.py`
+- Modify: `backend/app/main.py`
+
+- [ ] **Step 1: Write admin.py**
+
+```python
+"""Admin endpoints for system statistics."""
+import json
+from fastapi import APIRouter, Depends, HTTPException
+import redis.asyncio as aioredis
+from app.core.redis import get_redis
+from app.api.deps import get_current_user
+from app.schemas.auth import UserContext
+
+router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+@router.get("/stats")
+async def admin_stats(
+    current_user: UserContext = Depends(get_current_user),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Get daily evolution stats (admin only)."""
+    if current_user.role_level > 1:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        cached = await redis.get("evolution_stats:daily")
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+    return {"status": "no_data", "message": "Evolution report not yet generated"}
+```
+
+- [ ] **Step 2: Register in main.py**
+
+```python
+from app.api.v1.admin import router as admin_router
+app.include_router(admin_router)
+```
+
+- [ ] **Step 3: Verify** route shows `/api/v1/admin/stats`
+
+- [ ] **Step 4: Commit**
+
+---
+
+### Task 4: Unit Tests
+
+**Files:**
+- Create: `backend/tests/services/ai/test_evolution_analyzer.py`
+
+- [ ] **Step 1: Write tests** (9+ tests)
+
+Tests for:
+- `_parse_unmatched_queries`: normal table, empty file, format exception (3 tests)
+- Low quality rule matching: simulated rows triggering each of 4 rules (4 tests)
+- `to_markdown()` produces all 4 sections (1 test)
+- `to_summary_json()` produces valid JSON (1 test)
+
+- [ ] **Step 2: Run** and verify 9+ pass
+
+- [ ] **Step 3: Commit**
+
+---
+
+### Task 5: Verification
+
+- [ ] **Step 1: Run full test suite** `cd backend && python -m pytest tests/ -q`
+- [ ] **Step 2: Verify all Phase 7 imports**
+- [ ] **Step 3: Verify scheduler has 6 jobs**
+- [ ] **Step 4: Commit**
+
+---
+
+## Task Dependencies
+
+```
+Task 1 (EvolutionAnalyzer) -> Task 2 (Job+Scheduler) + Task 4 (Tests)
+Task 2 -> Task 3 (Admin API) -> Task 5 (Verification)
+```
+
+## Time Estimate: ~1.5 hours

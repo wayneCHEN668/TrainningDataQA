@@ -16,7 +16,7 @@ export function ClarificationOptions({
   return (
     <div className="rounded-lg bg-bg-card border border-border p-3">
       <p className="text-text-secondary text-xs mb-2">
-        Sorry, I didn&apos;t fully understand. Did you mean:
+        抱歉，我没有完全理解。您是不是想问：
       </p>
       <div className="space-y-2">
         {options.map((opt) => (
@@ -38,7 +38,7 @@ export function ClarificationOptions({
         onClick={onNone}
         className="mt-2 text-xs text-error hover:text-[#ff8a95] transition-colors cursor-pointer"
       >
-        None of these &rarr;
+        都不是 →
       </button>
     </div>
   );

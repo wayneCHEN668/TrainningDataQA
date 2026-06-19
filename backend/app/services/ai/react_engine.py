@@ -129,7 +129,7 @@ class ReactEngine:
             model=llm_model,
             base_url=llm_base_url,
             api_key=llm_api_key or "not-needed",
-            temperature=0.2,
+            temperature=0,  # P0 fix: deterministic output for stability
             streaming=True,
         )
         self._tools = tools
@@ -186,8 +186,11 @@ class ReactEngine:
                         return
                     await asyncio.sleep(2 ** retries)
 
-            # Check for Final Answer
-            fa_match = re.search(r"Final Answer:\s*(.+)", llm_output, re.DOTALL | re.IGNORECASE)
+            # Check for Final Answer (support English + Chinese variants)
+            fa_match = re.search(
+                r"(?:Final Answer|最终回答|最终答案|答案)[:：]\s*(.+)",
+                llm_output, re.DOTALL | re.IGNORECASE
+            )
             if fa_match:
                 final_text = fa_match.group(1).strip()
                 if final_text:
@@ -195,9 +198,9 @@ class ReactEngine:
                     answer_buffer += "\n" + final_text
                 break
 
-            # Parse Action
+            # Parse Action — use \w+ to avoid capturing trailing () or other chars
             print(f"[ReactEngine] step={step_no}, parsing llm_output ({len(llm_output)} chars): {llm_output[:200]}", flush=True)
-            action_match = re.search(r"Action:\s*(\S+)", llm_output)
+            action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", llm_output)
             if not action_match:
                 print(f"[ReactEngine] 未找到 Action, 退出循环", flush=True)
                 break
@@ -205,13 +208,9 @@ class ReactEngine:
             tool_name = action_match.group(1).strip()
             tool = tool_by_name.get(tool_name)
             action_input_str = ""
-            # Match JSON object {..} or array [..] — handles trailing text
-            ai_match = re.search(
-                r"Action Input:\s*(\{(?:[^{}]|\{[^{}]*\})*\}|\[[^\[\]]*\])",
-                llm_output, re.DOTALL
-            )
-            if ai_match:
-                action_input_str = ai_match.group(1).strip()
+            # Parse Action Input using bracket-matching for robust JSON extraction
+            # (handles arbitrary nesting depth, unlike the old regex)
+            action_input_str = _extract_action_input(llm_output)
 
             if not tool:
                 observation = f"Error: tool '{tool_name}' not found. Available: {list(tool_by_name.keys())}"
@@ -236,7 +235,7 @@ class ReactEngine:
                             "params_summary": _summarize_params(tool_input),
                         })
                         result = await tool.ainvoke(tool_input)
-                        observation = json.dumps(result, ensure_ascii=False)
+                        observation = json.dumps(result, ensure_ascii=False, default=str)
                         self._tool_results.append({
                             "tool_name": tool_name,
                             "result": result,
@@ -564,3 +563,65 @@ def _extract_chart_data(output) -> dict | None:
             pass
 
     return None
+
+
+def _extract_action_input(llm_output: str) -> str:
+    """Extract Action Input JSON from LLM output using bracket-matching.
+
+    This replaces the fragile regex approach and correctly handles
+    arbitrarily nested JSON objects/arrays that the old regex could not.
+
+    Strategy:
+    1. Find "Action Input:" marker (case-insensitive)
+    2. Scan forward for the first { or [ character
+    3. Use bracket-matching to find the complete balanced JSON string
+    """
+    # Find the Action Input marker
+    marker_match = re.search(
+        r"Action\s*Input\s*[:：]\s*",
+        llm_output,
+        re.IGNORECASE
+    )
+    if not marker_match:
+        return ""
+
+    # Start scanning after the marker
+    pos = marker_match.end()
+
+    # Find the first opening bracket
+    while pos < len(llm_output) and llm_output[pos] not in "{[":
+        pos += 1
+    if pos >= len(llm_output):
+        return ""
+
+    opening = llm_output[pos]
+    closing = "}" if opening == "{" else "]"
+
+    # Bracket-matching: track depth, respect string literals
+    depth = 0
+    in_string = False
+    escape = False
+    start = pos
+
+    while pos < len(llm_output):
+        ch = llm_output[pos]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == opening:
+                depth += 1
+            elif ch == closing:
+                depth -= 1
+                if depth == 0:
+                    return llm_output[start:pos + 1]
+        pos += 1
+
+    # Unbalanced brackets — return what we have (best effort)
+    return llm_output[start:]

@@ -159,7 +159,6 @@ TABLE_SUMMARIES:
       session_name: 考场名称
       open_at: 开放开始时间
       close_at: 开放结束时间
-      org_code: 机构编号
       linked_course_code: 关联课程编号
       user_code: 考生编号
       user_id: 系统用户ID
@@ -721,7 +720,7 @@ TABLE_SUMMARIES:
       type_code: 题型（JUDGE判断/SINGLE单选/MULTI多选/BLANK填空/SUBJ主观/OPER操作）
       difficulty_level: 难度（1-5）
       grading_type: 评分方式（0=自动/1=人工）
-      org_code: 所属机构
+      dept_code: 所属机构
 
   question_option:
     label: 试题选项/答案表
@@ -746,7 +745,7 @@ TABLE_SUMMARIES:
       paper_key: 试卷唯一Key
       paper_name: 试卷名称
       status: 状态（0草稿/1发布）
-      org_code: 所属机构
+      dept_code: 所属机构
 
   paper_question:
     label: 试卷-试题关联表
