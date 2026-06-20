@@ -403,7 +403,8 @@ CREATE TABLE `course_grade` (
   KEY `idx_cg_class` (`class_code`),
   KEY `idx_cg_score` (`total_score`),
   KEY `idx_cg_passed` (`is_passed`),
-  KEY `idx_cg_position` (`position_code`)
+  KEY `idx_cg_position` (`position_code`),
+  KEY `idx_cg_updated_at` (`updated_at`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课程综合成绩（课件完成度+考试+作业加权汇总）';
 
 /*Table structure for table `courseware` */

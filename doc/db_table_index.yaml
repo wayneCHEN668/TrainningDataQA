@@ -1001,6 +1001,7 @@ TABLE_SUMMARIES:
       - 综合成绩 | 总分 | 是否结业 | 成绩等级
       - 课件得分/考试得分/作业得分各是多少 | 课件完成率
       - 谁结业了 | 不及格的有哪些 | 平均综合分
+      - 最近更新的成績记录（按 updated_at 排序）
     key_fields:
       user_id: 学员ID
       course_code: 课程编号
@@ -1012,6 +1013,7 @@ TABLE_SUMMARIES:
       grade_rank: 等级（优/良/中/及格/不及格）
       is_passed: 是否结业通过（1=是）
       completion_rate: 课件完成率（%）
+      updated_at: 最后更新时间（有索引 idx_cg_updated_at，适合增量同步/变更检测）
     caution: 这是预计算的汇总表，是查综合成绩的首选，不要实时JOIN三张表计算
 
   # ── M11 学习路径 ──────────────────────────────────────────
