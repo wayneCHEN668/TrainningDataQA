@@ -110,6 +110,8 @@ class SchemaIndexService:
 
     # -- Injection point 4: SQL blacklist validation ----------------
 
+    # 旧实现：对编译后 SQL 字符串做正则匹配（QueryExecutor 不再使用，
+    # 保留以兼容可能存在的其他调用方/测试代码）。
     FORBIDDEN_TABLE_PATTERN = re.compile(
         r"\b(cache|cache_locks|failed_jobs|job_batches|jobs|"
         r"migrations|password_reset_tokens|personal_access_tokens|"
@@ -117,8 +119,21 @@ class SchemaIndexService:
         re.IGNORECASE,
     )
 
+    # 新实现：QueryExecutor._validate_tables() 使用的表名集合，
+    # 与上面正则中的词表保持一致，供静态分析（直接比对表名集合，无需编译 SQL）使用。
+    FORBIDDEN_TABLES = {
+        "cache", "cache_locks", "failed_jobs", "job_batches", "jobs",
+        "migrations", "password_reset_tokens", "personal_access_tokens",
+        "sessions", "users",
+    }
+
     def validate_query_tables(self, sql: str) -> tuple[bool, str]:
-        """Validate that SQL does not access forbidden system tables."""
+        """Validate that SQL does not access forbidden system tables.
+
+        Deprecated path: kept for backward compatibility. QueryExecutor now
+        uses the static table-name-set comparison instead (faster, and not
+        susceptible to false positives from literal parameter values).
+        """
         found = self.FORBIDDEN_TABLE_PATTERN.findall(sql)
         if found:
             unique_found = list(set(found))

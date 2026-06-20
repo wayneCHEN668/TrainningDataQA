@@ -17,6 +17,15 @@ MAX_STEPS = 8
 MAX_LLM_RETRIES = 2
 DEFAULT_LLM_TIMEOUT = 60.0
 
+# ── Observation 截断 / 滑动窗口配置 ──────────────────────────────────────
+# 用于抑制 messages 列表随轮次增长导致的 prompt 膨胀问题：
+# 1. 单条 Observation 内的长列表截断为前 N 条 + 总数提示
+# 2. 只保留最近 RECENT_FULL_OBSERVATIONS 轮的完整 Observation，
+#    更早的轮次替换为极简摘要（工具名 + 关键字段），不再携带明细数据
+OBSERVATION_LIST_TRUNCATE_LEN = 5       # 列表类字段最多保留几条明细
+OBSERVATION_MAX_CHARS = 1500            # 单条 Observation 字符数硬上限（截断后兜底）
+RECENT_FULL_OBSERVATIONS = 2            # 保留最近几轮的完整 Observation
+
 REACT_SYSTEM_TEMPLATE = """你是 SkillCloudHS 培训数据分析系统的智能分析引擎。
 通过 Thought -> Action -> Action Input -> Observation 循环回答用户问题。
 
@@ -301,7 +310,7 @@ class ReactEngine:
                             "params_summary": _summarize_params(tool_input),
                         })
                         result = await tool.ainvoke(tool_input)
-                        observation = json.dumps(result, ensure_ascii=False, default=str)
+                        observation = _build_observation_text(tool_name, result)
                         self._tool_results.append({
                             "tool_name": tool_name,
                             "result": result,
@@ -327,6 +336,10 @@ class ReactEngine:
             answer_buffer += obs_text
             messages.append(AIMessage(content=llm_output))
             messages.append(HumanMessage(content=f"Observation: {observation}"))
+
+            # 滑动窗口：只保留最近 RECENT_FULL_OBSERVATIONS 轮完整 Observation，
+            # 更早轮次压缩为摘要，避免 prompt 随轮次线性甚至超线性膨胀
+            messages = _compact_message_history(messages)
 
         # ── Post-process ─────────────────────────────────────────────────────
 
@@ -569,6 +582,116 @@ def _extract_final_answer_from_buffer(buffer: str) -> str:
             return _strip_reasoning("\n".join(content_lines[-5:]))
 
     return ""
+
+
+def _truncate_observation_data(result, list_limit: int = OBSERVATION_LIST_TRUNCATE_LEN):
+    """递归截断工具结果中的长列表，保留聚合字段完整，只截断明细列表。
+
+    例如 query_at_risk_learners 返回 {"count": 47, "learners": [...47条...]}，
+    截断后变为 {"count": 47, "learners": [...前5条...], "_truncated_learners": "还有 42 条，已省略"}。
+
+    聚合类标量字段（数字/字符串/布尔）原样保留，因为这些通常是 LLM 推理需要的关键数据，
+    只有"逐条明细"这类对 LLM 后续推理价值低、但占用 token 多的部分被截断。
+    """
+    if isinstance(result, dict):
+        truncated = {}
+        for k, v in result.items():
+            if isinstance(v, list) and len(v) > list_limit:
+                truncated[k] = [_truncate_observation_data(item, list_limit) for item in v[:list_limit]]
+                truncated[f"_truncated_{k}"] = f"共 {len(v)} 条，仅展示前 {list_limit} 条，其余已省略"
+            elif isinstance(v, (dict, list)):
+                truncated[k] = _truncate_observation_data(v, list_limit)
+            else:
+                truncated[k] = v
+        return truncated
+    if isinstance(result, list):
+        if len(result) > list_limit:
+            return [_truncate_observation_data(item, list_limit) for item in result[:list_limit]] + [
+                f"...(共 {len(result)} 条，其余已省略)"
+            ]
+        return [_truncate_observation_data(item, list_limit) for item in result]
+    return result
+
+
+def _build_observation_text(tool_name: str, result) -> str:
+    """构造截断后的 Observation 文本，并加最终字符数硬上限兜底。
+
+    硬上限是为了应对极端情况（例如截断后单条记录本身字段就很多），
+    保证无论如何不会有单条 Observation 占用过多 prompt 空间。
+    """
+    truncated_result = _truncate_observation_data(result)
+    text = json.dumps(truncated_result, ensure_ascii=False, default=str)
+    if len(text) > OBSERVATION_MAX_CHARS:
+        text = text[:OBSERVATION_MAX_CHARS] + f"...(已截断，工具 {tool_name} 原始返回更长)"
+    return text
+
+
+def _summarize_observation_for_history(tool_name: str, observation_text: str) -> str:
+    """将较早轮次的 Observation 压缩成极简摘要，用于滑动窗口替换完整内容。
+
+    只保留"调用了什么工具 + 返回数据的大致规模"，不保留任何明细数值，
+    因为这些早期轮次的具体数据通常已经被 LLM 在当时的 Thought 中消化、
+    引用过；继续携带完整内容对后续推理边际价值低，但持续占用 token。
+    """
+    try:
+        parsed = json.loads(observation_text)
+        if isinstance(parsed, dict):
+            field_count = len(parsed)
+            list_fields = [k for k, v in parsed.items() if isinstance(v, list)]
+            hint = f"，含列表字段: {', '.join(list_fields)}" if list_fields else ""
+            return f"[历史工具调用 {tool_name} 已返回 {field_count} 个字段的数据{hint}，明细已省略，如需重新查看请重新调用工具]"
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return f"[历史工具调用 {tool_name} 的结果已省略以节省上下文]"
+
+
+def _compact_message_history(messages: list, recent_full: int = RECENT_FULL_OBSERVATIONS) -> list:
+    """滑动窗口：只保留最近 N 轮的完整 Observation，更早轮次替换为摘要。
+
+    messages 结构固定为：
+      [0] SystemMessage（system_prompt，不动）
+      [1] HumanMessage（原始问题，不动）
+      [2..] 交替的 AIMessage（LLM 输出，含 Thought/Action）+ HumanMessage（Observation: ...）
+
+    每一轮对应一对 (AIMessage, HumanMessage)。保留最近 recent_full 轮完整不动，
+    更早的轮次中，HumanMessage（即 Observation）被替换为摘要文本；
+    AIMessage（LLM 的 Thought/Action 原文）保持不变，因为它体积通常远小于 Observation，
+    且是 LLM 自己的推理记录，压缩它对连贯性影响更大。
+    """
+    if len(messages) <= 2:
+        return messages
+
+    head = messages[:2]  # SystemMessage + 初始 HumanMessage(question)
+    rounds = messages[2:]  # 后续按 (AIMessage, HumanMessage) 成对出现
+
+    # 按轮次切分（每轮 2 条消息）
+    paired_rounds = [rounds[i:i + 2] for i in range(0, len(rounds), 2)]
+    total_rounds = len(paired_rounds)
+
+    compacted_rounds = []
+    for idx, pair in enumerate(paired_rounds):
+        is_recent = (total_rounds - idx) <= recent_full
+        if is_recent or len(pair) < 2:
+            compacted_rounds.append(pair)
+            continue
+
+        ai_msg, obs_msg = pair
+        obs_content = obs_msg.content if hasattr(obs_msg, "content") else str(obs_msg)
+        # 提取 "Observation: " 前缀后的工具名（从同轮 AIMessage 里找 Action: xxx）
+        ai_content = ai_msg.content if hasattr(ai_msg, "content") else str(ai_msg)
+        action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", ai_content)
+        tool_name = action_match.group(1) if action_match else "unknown_tool"
+
+        obs_body = obs_content
+        if obs_body.startswith("Observation:"):
+            obs_body = obs_body[len("Observation:"):].strip()
+
+        summary = _summarize_observation_for_history(tool_name, obs_body)
+        compacted_obs_msg = HumanMessage(content=f"Observation: {summary}")
+        compacted_rounds.append([ai_msg, compacted_obs_msg])
+
+    flattened = [m for pair in compacted_rounds for m in pair]
+    return head + flattened
 
 
 def _summarize_params(params: dict) -> str:

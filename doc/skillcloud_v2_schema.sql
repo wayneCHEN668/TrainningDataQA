@@ -2,8 +2,7 @@
 SQLyog Ultimate v12.09 (64 bit)
 MySQL - 8.0.45-0ubuntu0.24.04.1 : Database - skillcloud_v2
 *********************************************************************
-*/
-
+*/
 
 /*!40101 SET NAMES utf8 */;
 
@@ -55,6 +54,15 @@ CREATE TABLE `ai_learning_plan` (
   KEY `idx_alp_path` (`path_code`),
   KEY `idx_alp_trigger` (`trigger_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 学习规划记录（LLM 输入/输出/反馈完整存档）';
+
+/*Table structure for table `alembic_version` */
+
+DROP TABLE IF EXISTS `alembic_version`;
+
+CREATE TABLE `alembic_version` (
+  `version_num` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  PRIMARY KEY (`version_num`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `announcement` */
 
@@ -151,7 +159,7 @@ CREATE TABLE `assignment` (
   KEY `idx_asgn_course` (`course_code`),
   KEY `idx_asgn_creator` (`creator_id`),
   KEY `idx_asgn_end` (`submit_end`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业信息表';
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业信息表';
 
 /*Table structure for table `assignment_answer` */
 
@@ -181,7 +189,7 @@ CREATE TABLE `assignment_class` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_asgn_class` (`assignment_code`,`class_code`),
   KEY `idx_ac_class` (`class_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业-班级分配表';
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业-班级分配表';
 
 /*Table structure for table `assignment_question` */
 
@@ -237,7 +245,7 @@ CREATE TABLE `assignment_submission` (
   KEY `idx_as_student` (`student_id`),
   KEY `idx_as_submitted` (`submitted_at`),
   KEY `idx_as_graded` (`graded_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业提交与批改记录';
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='作业提交与批改记录';
 
 /*Table structure for table `cache` */
 
@@ -366,7 +374,7 @@ CREATE TABLE `course_courseware` (
   UNIQUE KEY `uk_cc` (`course_code`,`courseware_code`),
   KEY `idx_cc_course` (`course_code`),
   KEY `idx_cc_courseware` (`courseware_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=508 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=532 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `course_grade` */
 
@@ -405,7 +413,7 @@ CREATE TABLE `course_grade` (
   KEY `idx_cg_passed` (`is_passed`),
   KEY `idx_cg_position` (`position_code`),
   KEY `idx_cg_updated_at` (`updated_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课程综合成绩（课件完成度+考试+作业加权汇总）';
+) ENGINE=InnoDB AUTO_INCREMENT=202 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课程综合成绩（课件完成度+考试+作业加权汇总）';
 
 /*Table structure for table `courseware` */
 
@@ -505,7 +513,7 @@ CREATE TABLE `courseware_study_stats` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_css_key_date` (`courseware_key`,`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课件学习时长统计';
+) ENGINE=InnoDB AUTO_INCREMENT=293 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课件学习时长统计';
 
 /*Table structure for table `courseware_type` */
 
@@ -577,7 +585,37 @@ CREATE TABLE `department` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_dept_code` (`dept_code`),
   KEY `idx_dept_org` (`org_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='一级单位/部门表（一级单位）';
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='一级单位/部门表（一级单位）';
+
+/*Table structure for table `dept_benchmark_stats` */
+
+DROP TABLE IF EXISTS `dept_benchmark_stats`;
+
+CREATE TABLE `dept_benchmark_stats` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `stat_period` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'month',
+  `stat_date` date NOT NULL,
+  `avg_completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_exam_pass_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_composite_score` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `avg_study_minutes` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `avg_skill_error_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_engagement_score` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `p25_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p50_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p75_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p25_composite_score` decimal(6,2) DEFAULT NULL,
+  `p50_composite_score` decimal(6,2) DEFAULT NULL,
+  `p75_composite_score` decimal(6,2) DEFAULT NULL,
+  `total_learners` int NOT NULL DEFAULT '0',
+  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_dbs` (`dept_code`,`stat_period`,`stat_date`),
+  KEY `idx_dbs_org` (`org_code`),
+  KEY `idx_dbs_date` (`stat_date`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `exam_answer` */
 
@@ -635,9 +673,9 @@ CREATE TABLE `exam_paper` (
   `paper_desc` text COLLATE utf8mb4_unicode_ci,
   `attachment_url` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `type_count_config` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '各题型数量（JSON）',
-  `type_score_config` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '各题型分值（JSON）',
-  `creator_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `type_score_config` varchar(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '各题型分值（JSON）',
+  `creator_id` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `use_weighted_score` tinyint(1) NOT NULL DEFAULT '0',
   `sort_order` int NOT NULL DEFAULT '0',
   `is_free` tinyint(1) NOT NULL DEFAULT '0',
@@ -647,8 +685,8 @@ CREATE TABLE `exam_paper` (
   `deleted_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_paper_key` (`paper_key`),
-  KEY `idx_ep_org` (`org_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷表';
+  KEY `idx_ep_org` (`dept_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷表';
 
 /*Table structure for table `exam_paper_pool` */
 
@@ -684,8 +722,8 @@ CREATE TABLE `exam_session` (
   `type_count_config` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `type_score_config` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `grading_mode` tinyint(1) NOT NULL DEFAULT '0' COMMENT '0=自动 1=人工',
-  `creator_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `creator_id` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `competition_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `use_random_questions` tinyint(1) NOT NULL DEFAULT '0',
   `is_open_enrollment` tinyint(1) NOT NULL DEFAULT '0' COMMENT '学生可自主报名',
@@ -695,7 +733,7 @@ CREATE TABLE `exam_session` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_exam_session_code` (`exam_session_code`),
-  KEY `idx_es_org` (`org_code`),
+  KEY `idx_es_org` (`dept_code`),
   KEY `idx_es_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考试场次（考场）';
 
@@ -845,7 +883,7 @@ CREATE TABLE `learning_progress` (
   UNIQUE KEY `uk_lp` (`user_id`,`course_code`,`courseware_code`),
   KEY `idx_lp_user_course` (`user_id`,`course_code`),
   KEY `idx_lp_status` (`status`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习进度快照（学生×课程×课件，异步更新）';
+) ENGINE=InnoDB AUTO_INCREMENT=202 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习进度快照（学生×课程×课件，异步更新）';
 
 /*Table structure for table `login_log` */
 
@@ -862,7 +900,7 @@ CREATE TABLE `login_log` (
   PRIMARY KEY (`id`),
   KEY `idx_login_user` (`user_id`),
   KEY `idx_login_time` (`logged_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户登录日志';
+) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户登录日志';
 
 /*Table structure for table `major` */
 
@@ -892,7 +930,7 @@ CREATE TABLE `migrations` (
   `migration` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `batch` int NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=84 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=89 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `org` */
 
@@ -912,6 +950,35 @@ CREATE TABLE `org` (
   UNIQUE KEY `uk_org_code` (`org_code`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构/学校表';
 
+/*Table structure for table `org_benchmark_stats` */
+
+DROP TABLE IF EXISTS `org_benchmark_stats`;
+
+CREATE TABLE `org_benchmark_stats` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `stat_period` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'month',
+  `stat_date` date NOT NULL,
+  `avg_completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_exam_pass_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_composite_score` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `avg_study_minutes` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `avg_skill_error_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_engagement_score` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `p25_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p50_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p75_completion_rate` decimal(5,2) DEFAULT NULL,
+  `p25_composite_score` decimal(6,2) DEFAULT NULL,
+  `p50_composite_score` decimal(6,2) DEFAULT NULL,
+  `p75_composite_score` decimal(6,2) DEFAULT NULL,
+  `total_orgs` int NOT NULL DEFAULT '0',
+  `total_learners` int NOT NULL DEFAULT '0',
+  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_obs` (`org_code`,`stat_period`,`stat_date`),
+  KEY `idx_obs_date` (`stat_date`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 /*Table structure for table `org_course_stats` */
 
 DROP TABLE IF EXISTS `org_course_stats`;
@@ -928,7 +995,7 @@ CREATE TABLE `org_course_stats` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_ocs` (`org_code`,`course_code`,`stat_date`),
   KEY `idx_ocs_org_date` (`org_code`,`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构-课程日统计';
+) ENGINE=InnoDB AUTO_INCREMENT=381 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构-课程日统计';
 
 /*Table structure for table `org_daily_stats` */
 
@@ -952,7 +1019,7 @@ CREATE TABLE `org_daily_stats` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_ods` (`org_code`,`stat_date`),
   KEY `idx_ods_date` (`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构日统计汇总';
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构日统计汇总';
 
 /*Table structure for table `org_monthly_stats` */
 
@@ -960,7 +1027,7 @@ DROP TABLE IF EXISTS `org_monthly_stats`;
 
 CREATE TABLE `org_monthly_stats` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `app_id` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
   `stat_month` date NOT NULL COMMENT '统计月份（取当月 1 日存储）',
   `total_study_minutes` int NOT NULL DEFAULT '0',
   `total_study_sessions` int NOT NULL DEFAULT '0',
@@ -971,8 +1038,8 @@ CREATE TABLE `org_monthly_stats` (
   `avg_skill_points_done` decimal(10,2) NOT NULL DEFAULT '0.00',
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_oms` (`app_id`,`stat_month`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构月统计汇总';
+  UNIQUE KEY `uk_oms` (`org_code`,`stat_month`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构月统计汇总';
 
 /*Table structure for table `paper_attachment` */
 
@@ -984,9 +1051,10 @@ CREATE TABLE `paper_attachment` (
   `file_url` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `file_type` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
+  `file_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_pa_paper` (`paper_key`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷附件表';
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷附件表';
 
 /*Table structure for table `paper_question` */
 
@@ -1002,7 +1070,7 @@ CREATE TABLE `paper_question` (
   PRIMARY KEY (`id`),
   KEY `idx_pq_paper` (`paper_key`),
   KEY `idx_pq_question` (`question_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷-试题关联表';
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试卷-试题关联表';
 
 /*Table structure for table `password_reset_tokens` */
 
@@ -1079,7 +1147,7 @@ CREATE TABLE `personal_access_tokens` (
   UNIQUE KEY `personal_access_tokens_token_unique` (`token`),
   KEY `personal_access_tokens_tokenable_type_tokenable_id_index` (`tokenable_type`,`tokenable_id`),
   KEY `personal_access_tokens_expires_at_index` (`expires_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=110 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `platform_qa` */
 
@@ -1158,7 +1226,7 @@ CREATE TABLE `position_course` (
   UNIQUE KEY `uk_position_course` (`position_code`,`course_code`),
   KEY `idx_pc_position` (`position_code`),
   KEY `idx_pc_course` (`course_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='岗位-课程分配表（岗位维度批量分配课程）';
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='岗位-课程分配表（岗位维度批量分配课程）';
 
 /*Table structure for table `push_device` */
 
@@ -1217,6 +1285,32 @@ CREATE TABLE `qa_question_type` (
   UNIQUE KEY `uk_qat_type` (`type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='问题类型定义表';
 
+/*Table structure for table `qa_session_log` */
+
+DROP TABLE IF EXISTS `qa_session_log`;
+
+CREATE TABLE `qa_session_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `session_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `question` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `intent` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `complexity` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `modules_used` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `steps_count` int DEFAULT '0',
+  `tools_used` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `duration_ms` int DEFAULT NULL,
+  `total_tokens` int DEFAULT NULL,
+  `user_feedback` smallint DEFAULT NULL,
+  `fallback_used` tinyint(1) DEFAULT '0',
+  `asked_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_qsl_asked` (`asked_at`),
+  KEY `idx_qsl_intent` (`intent`),
+  KEY `idx_qsl_feedback` (`user_feedback`)
+) ENGINE=InnoDB AUTO_INCREMENT=102 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 /*Table structure for table `qa_voice` */
 
 DROP TABLE IF EXISTS `qa_voice`;
@@ -1269,8 +1363,8 @@ CREATE TABLE `question` (
   `knowledge_point` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '知识点',
   `related_course_key` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联课程 Key',
   `attachment_url` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '附件 URL',
-  `creator_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `creator_id` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_disabled` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否停用',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1278,8 +1372,8 @@ CREATE TABLE `question` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_question_code` (`question_code`),
   KEY `idx_q_type` (`type_code`),
-  KEY `idx_q_org` (`org_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题库';
+  KEY `idx_q_org` (`dept_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='题库';
 
 /*Table structure for table `question_attachment` */
 
@@ -1289,11 +1383,12 @@ CREATE TABLE `question_attachment` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `question_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `file_url` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `file_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `file_type` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_qa_question` (`question_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题附件表';
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题附件表';
 
 /*Table structure for table `question_option` */
 
@@ -1313,7 +1408,7 @@ CREATE TABLE `question_option` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_qo_question` (`question_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题选项/答案表';
+) ENGINE=InnoDB AUTO_INCREMENT=47 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题选项/答案表';
 
 /*Table structure for table `question_option_img` */
 
@@ -1327,7 +1422,7 @@ CREATE TABLE `question_option_img` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_qoi_question` (`question_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题选项图片表';
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='试题选项图片表';
 
 /*Table structure for table `question_type` */
 
@@ -1411,7 +1506,7 @@ CREATE TABLE `skill_error_log` (
   KEY `idx_sel_user` (`user_id`),
   KEY `idx_sel_courseware` (`courseware_code`),
   KEY `idx_sel_time` (`occurred_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能点错误日志（按年 Range 分区）'
+) ENGINE=InnoDB AUTO_INCREMENT=201 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能点错误日志（按年 Range 分区）'
 /*!50100 PARTITION BY RANGE (year(`occurred_at`))
 (PARTITION p2021 VALUES LESS THAN (2022) ENGINE = InnoDB,
  PARTITION p2022 VALUES LESS THAN (2023) ENGINE = InnoDB,
@@ -1461,7 +1556,7 @@ CREATE TABLE `skill_point_log` (
   KEY `idx_spl_user` (`user_id`),
   KEY `idx_spl_courseware` (`courseware_code`),
   KEY `idx_spl_user_cw_course` (`user_id`,`courseware_code`,`course_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能点操作日志（细粒度）';
+) ENGINE=InnoDB AUTO_INCREMENT=209 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能点操作日志（细粒度）';
 
 /*Table structure for table `student_class` */
 
@@ -1474,7 +1569,7 @@ CREATE TABLE `student_class` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_student_user` (`user_id`),
   KEY `idx_sc_class` (`class_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=43 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生-班级归属表（1:1）';
+) ENGINE=InnoDB AUTO_INCREMENT=53 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生-班级归属表（1:1）';
 
 /*Table structure for table `study_session_log` */
 
@@ -1504,7 +1599,7 @@ CREATE TABLE `study_session_log` (
   KEY `idx_ssl_course` (`course_code`),
   KEY `idx_ssl_started` (`started_at`),
   KEY `idx_ssl_user_cw_course` (`user_id`,`courseware_key`,`course_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=85 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习会话日志（每次学习汇总）';
+) ENGINE=InnoDB AUTO_INCREMENT=286 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习会话日志（每次学习汇总）';
 
 /*Table structure for table `teacher_class` */
 
@@ -1554,7 +1649,7 @@ CREATE TABLE `user_course` (
   UNIQUE KEY `uk_user_course` (`user_id`,`course_code`),
   KEY `idx_uc_user` (`user_id`),
   KEY `idx_uc_course` (`course_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户-课程个人分配表';
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户-课程个人分配表';
 
 /*Table structure for table `user_course_auth` */
 
@@ -1626,7 +1721,7 @@ CREATE TABLE `user_profile` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_up_user` (`user_id`),
   KEY `idx_up_position_code` (`position_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户扩展信息表';
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户扩展信息表';
 
 /*Table structure for table `users` */
 
@@ -1644,6 +1739,104 @@ CREATE TABLE `users` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `users_email_unique` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*Table structure for table `v_exam_analysis` */
+
+DROP TABLE IF EXISTS `v_exam_analysis`;
+
+CREATE TABLE `v_exam_analysis` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `exam_session_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `session_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `open_at` datetime DEFAULT NULL,
+  `close_at` datetime DEFAULT NULL,
+  `linked_course_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `user_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `attempt_number` int NOT NULL DEFAULT '0',
+  `total_score` decimal(10,2) DEFAULT NULL,
+  `is_passed` tinyint(1) DEFAULT NULL,
+  `is_graded` tinyint(1) NOT NULL DEFAULT '0',
+  `submitted_at` datetime DEFAULT NULL,
+  `duration_seconds` int DEFAULT NULL,
+  `type_scores` json DEFAULT NULL,
+  `correct_count` int DEFAULT NULL,
+  `total_questions` int DEFAULT NULL,
+  `accuracy_rate` decimal(5,2) DEFAULT NULL,
+  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_vea_session` (`exam_session_code`),
+  KEY `idx_vea_user` (`user_code`),
+  KEY `idx_vea_course` (`linked_course_code`),
+  KEY `idx_vea_open_at` (`open_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*Table structure for table `v_learner_comprehensive` */
+
+DROP TABLE IF EXISTS `v_learner_comprehensive`;
+
+CREATE TABLE `v_learner_comprehensive` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `user_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `class_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `class_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `total_courses` int NOT NULL DEFAULT '0',
+  `courses_completed` int NOT NULL DEFAULT '0',
+  `completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `avg_composite_score` decimal(6,2) DEFAULT NULL,
+  `avg_courseware_score` decimal(6,2) DEFAULT NULL,
+  `avg_exam_score` decimal(6,2) DEFAULT NULL,
+  `avg_assignment_score` decimal(6,2) DEFAULT NULL,
+  `grade_rank` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `total_exams_taken` int NOT NULL DEFAULT '0',
+  `exams_passed` int NOT NULL DEFAULT '0',
+  `exam_pass_rate` decimal(5,2) DEFAULT NULL,
+  `best_exam_score` decimal(10,2) DEFAULT NULL,
+  `total_study_minutes` int NOT NULL DEFAULT '0',
+  `total_study_sessions` int NOT NULL DEFAULT '0',
+  `avg_session_minutes` int DEFAULT NULL,
+  `last_studied_at` datetime DEFAULT NULL,
+  `is_at_risk` tinyint(1) NOT NULL DEFAULT '0',
+  `risk_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `days_since_last_study` int DEFAULT NULL,
+  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_vlc` (`user_id`),
+  KEY `idx_vlc_dept` (`dept_code`),
+  KEY `idx_vlc_org` (`org_code`),
+  KEY `idx_vlc_risk` (`is_at_risk`,`risk_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=79 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+/*Table structure for table `v_skill_error_summary` */
+
+DROP TABLE IF EXISTS `v_skill_error_summary`;
+
+CREATE TABLE `v_skill_error_summary` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `courseware_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `courseware_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `course_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `step_index` int NOT NULL,
+  `total_attempts` int NOT NULL DEFAULT '0',
+  `total_errors` int NOT NULL DEFAULT '0',
+  `error_rate` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `unique_users` int NOT NULL DEFAULT '0',
+  `avg_errors_per_user` decimal(5,2) DEFAULT NULL,
+  `stat_date` date NOT NULL,
+  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_vses_courseware` (`courseware_code`),
+  KEY `idx_vses_course` (`course_code`),
+  KEY `idx_vses_dept` (`dept_code`),
+  KEY `idx_vses_date` (`stat_date`)
+) ENGINE=InnoDB AUTO_INCREMENT=128 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 /*Table structure for table `wechat_binding` */
 
@@ -1664,252 +1857,64 @@ CREATE TABLE `wechat_binding` (
   UNIQUE KEY `uk_wb_openid` (`openid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+/*Table structure for table `v_learner_overview` */
 
-/* ============================================================
-   Phase 1 AI 数据基础层 — 新增表/视图
-   日期: 2026-06-12
-   说明: 以下为 SkillCloudHS AI 问答系统的数据基础层对象，
-         包括基准统计表、综合分析宽表、权限过滤视图和会话日志表。
-         所有对象建在现有 skillcloud_v2 库内，AI 系统只读访问。
-   ============================================================ */
+DROP TABLE IF EXISTS `v_learner_overview`;
 
-/*Table structure for table `dept_benchmark_stats` */
+/*!50001 DROP VIEW IF EXISTS `v_learner_overview` */;
+/*!50001 DROP TABLE IF EXISTS `v_learner_overview` */;
 
-DROP TABLE IF EXISTS `dept_benchmark_stats`;
+/*!50001 CREATE TABLE  `v_learner_overview`(
+ `user_id` varchar(50) ,
+ `user_code` varchar(30) ,
+ `user_name` varchar(100) ,
+ `role_level` tinyint ,
+ `dept_code` varchar(30) ,
+ `dept_name` varchar(100) ,
+ `class_code` varchar(30) ,
+ `class_name` varchar(100) ,
+ `position_code` varchar(30) ,
+ `position_name` varchar(100) ,
+ `gender` tinyint ,
+ `education` varchar(30) ,
+ `job_title` varchar(50) ,
+ `last_login_at` datetime ,
+ `org_code` varchar(30) 
+)*/;
 
-CREATE TABLE `dept_benchmark_stats` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '院系编号',
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '所属机构编号',
-  `stat_period` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'month' COMMENT '统计周期: month/quarter/year',
-  `stat_date` date NOT NULL COMMENT '统计截止日期（周期末）',
-  `avg_completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均课件完成率(%)',
-  `avg_exam_pass_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均考试通过率(%)',
-  `avg_composite_score` decimal(6,2) NOT NULL DEFAULT '0.00' COMMENT '平均综合成绩',
-  `avg_study_minutes` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '人均学习时长(分钟)',
-  `avg_skill_error_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均技能点出错率(%)',
-  `avg_engagement_score` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均参与度评分',
-  `p25_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P25 分位',
-  `p50_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P50 分位',
-  `p75_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P75 分位',
-  `p25_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P25 分位',
-  `p50_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P50 分位',
-  `p75_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P75 分位',
-  `total_learners` int NOT NULL DEFAULT '0' COMMENT '院系学员总数',
-  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '刷新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_dbs` (`dept_code`,`stat_period`,`stat_date`),
-  KEY `idx_dbs_org` (`org_code`),
-  KEY `idx_dbs_date` (`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='院系基准统计（物化表，每月1日4:00定时刷新）';
+/*Table structure for table `v_course_overview` */
 
-/*Table structure for table `org_benchmark_stats` */
+DROP TABLE IF EXISTS `v_course_overview`;
 
-DROP TABLE IF EXISTS `org_benchmark_stats`;
+/*!50001 DROP VIEW IF EXISTS `v_course_overview` */;
+/*!50001 DROP TABLE IF EXISTS `v_course_overview` */;
 
-CREATE TABLE `org_benchmark_stats` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '机构编号',
-  `stat_period` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'month' COMMENT '统计周期: month/quarter/year',
-  `stat_date` date NOT NULL COMMENT '统计截止日期（周期末）',
-  `avg_completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均课件完成率(%)',
-  `avg_exam_pass_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均考试通过率(%)',
-  `avg_composite_score` decimal(6,2) NOT NULL DEFAULT '0.00' COMMENT '平均综合成绩',
-  `avg_study_minutes` decimal(10,2) NOT NULL DEFAULT '0.00' COMMENT '人均学习时长(分钟)',
-  `avg_skill_error_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均技能点出错率(%)',
-  `avg_engagement_score` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '平均参与度评分',
-  `p25_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P25 分位',
-  `p50_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P50 分位',
-  `p75_completion_rate` decimal(5,2) DEFAULT NULL COMMENT '完成率 P75 分位',
-  `p25_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P25 分位',
-  `p50_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P50 分位',
-  `p75_composite_score` decimal(6,2) DEFAULT NULL COMMENT '综合成绩 P75 分位',
-  `total_orgs` int NOT NULL DEFAULT '0' COMMENT '平台机构总数',
-  `total_learners` int NOT NULL DEFAULT '0' COMMENT '平台学员总数',
-  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '刷新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_obs` (`org_code`,`stat_period`,`stat_date`),
-  KEY `idx_obs_date` (`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='机构基准统计（物化表，每月1日4:00定时刷新）';
+/*!50001 CREATE TABLE  `v_course_overview`(
+ `course_code` varchar(30) ,
+ `course_name` varchar(200) ,
+ `credit` int ,
+ `study_hours` int ,
+ `category_code` varchar(30) ,
+ `category_name` varchar(50) ,
+ `dept_code` varchar(30) ,
+ `dept_name` varchar(100) ,
+ `is_published` tinyint(1) ,
+ `courseware_count` bigint 
+)*/;
 
-/*Table structure for table `v_learner_comprehensive` */
+/*View structure for view v_learner_overview */
 
-DROP TABLE IF EXISTS `v_learner_comprehensive`;
+/*!50001 DROP TABLE IF EXISTS `v_learner_overview` */;
+/*!50001 DROP VIEW IF EXISTS `v_learner_overview` */;
 
-CREATE TABLE `v_learner_comprehensive` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '学员 user_id',
-  `user_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '工号/学号',
-  `user_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '姓名',
-  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '院系编号',
-  `dept_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '院系名称',
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '机构编号',
-  `class_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '班级编号',
-  `class_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '班级名称',
-  `total_courses` int NOT NULL DEFAULT '0' COMMENT '分配的课程总数',
-  `courses_completed` int NOT NULL DEFAULT '0' COMMENT '已完成课程数',
-  `completion_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '课件完成率(%)',
-  `avg_composite_score` decimal(6,2) DEFAULT NULL COMMENT '多课程平均综合成绩',
-  `avg_courseware_score` decimal(6,2) DEFAULT NULL COMMENT '平均课件得分',
-  `avg_exam_score` decimal(6,2) DEFAULT NULL COMMENT '平均考试得分',
-  `avg_assignment_score` decimal(6,2) DEFAULT NULL COMMENT '平均作业得分',
-  `grade_rank` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '综合等级',
-  `total_exams_taken` int NOT NULL DEFAULT '0' COMMENT '参加考试次数',
-  `exams_passed` int NOT NULL DEFAULT '0' COMMENT '通过考试次数',
-  `exam_pass_rate` decimal(5,2) DEFAULT NULL COMMENT '考试通过率(%)',
-  `best_exam_score` decimal(10,2) DEFAULT NULL COMMENT '最高考试分数',
-  `total_study_minutes` int NOT NULL DEFAULT '0' COMMENT '累计学习时长(分钟)',
-  `total_study_sessions` int NOT NULL DEFAULT '0' COMMENT '学习总次数',
-  `avg_session_minutes` int DEFAULT NULL COMMENT '平均单次学习时长',
-  `last_studied_at` datetime DEFAULT NULL COMMENT '最近学习时间',
-  `is_at_risk` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否风险学员',
-  `risk_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '风险类型: inactive/low_score/overdue/near_deadline',
-  `days_since_last_study` int DEFAULT NULL COMMENT '距上次学习天数',
-  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '刷新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_vlc` (`user_id`),
-  KEY `idx_vlc_dept` (`dept_code`),
-  KEY `idx_vlc_org` (`org_code`),
-  KEY `idx_vlc_risk` (`is_at_risk`,`risk_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学员综合成绩宽表（物化表，每小时整点刷新）';
+/*!50001 CREATE ALGORITHM=UNDEFINED DEFINER=`webapp_user`@`%` SQL SECURITY DEFINER VIEW `v_learner_overview` AS select `u`.`user_id` AS `user_id`,`u`.`user_code` AS `user_code`,`u`.`user_name` AS `user_name`,`u`.`role_level` AS `role_level`,`u`.`dept_code` AS `dept_code`,`d`.`dept_name` AS `dept_name`,`sc`.`class_code` AS `class_code`,`cg`.`class_name` AS `class_name`,`u`.`position_code` AS `position_code`,`p`.`position_name` AS `position_name`,`up`.`gender` AS `gender`,`up`.`education` AS `education`,`up`.`job_title` AS `job_title`,`up`.`last_login_at` AS `last_login_at`,`d`.`org_code` AS `org_code` from (((((`user_info` `u` left join `department` `d` on((`u`.`dept_code` = `d`.`dept_code`))) left join `student_class` `sc` on((`u`.`user_id` = `sc`.`user_id`))) left join `class_group` `cg` on((`sc`.`class_code` = `cg`.`class_code`))) left join `position` `p` on((`u`.`position_code` = `p`.`position_code`))) left join `user_profile` `up` on((`u`.`user_id` = `up`.`user_id`))) where (`u`.`deleted_at` is null) */;
 
-/*Table structure for table `v_exam_analysis` */
+/*View structure for view v_course_overview */
 
-DROP TABLE IF EXISTS `v_exam_analysis`;
+/*!50001 DROP TABLE IF EXISTS `v_course_overview` */;
+/*!50001 DROP VIEW IF EXISTS `v_course_overview` */;
 
-CREATE TABLE `v_exam_analysis` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `exam_session_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '考场编号',
-  `session_name` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '考场名称',
-  `open_at` datetime DEFAULT NULL COMMENT '开放开始时间',
-  `close_at` datetime DEFAULT NULL COMMENT '开放结束时间',
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '机构编号',
-  `linked_course_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联课程编号',
-  `user_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '考生编号',
-  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '系统用户 ID',
-  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '院系编号',
-  `attempt_number` int NOT NULL DEFAULT '0' COMMENT '第几次考试',
-  `total_score` decimal(10,2) DEFAULT NULL COMMENT '总成绩',
-  `is_passed` tinyint(1) DEFAULT NULL COMMENT '是否及格（>=60分）',
-  `is_graded` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否已批阅',
-  `submitted_at` datetime DEFAULT NULL COMMENT '交卷时间',
-  `duration_seconds` int DEFAULT NULL COMMENT '答题耗时（秒）',
-  `type_scores` json DEFAULT NULL COMMENT '各题型得分 JSON',
-  `correct_count` int DEFAULT NULL COMMENT '正确题数',
-  `total_questions` int DEFAULT NULL COMMENT '总题数',
-  `accuracy_rate` decimal(5,2) DEFAULT NULL COMMENT '正确率(%)',
-  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '刷新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_vea` (`exam_session_code`,`user_code`,`attempt_number`),
-  KEY `idx_vea_user` (`user_code`),
-  KEY `idx_vea_org` (`org_code`),
-  KEY `idx_vea_passed` (`is_passed`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='考试分析宽表（物化表，每小时15分刷新）';
-
-/*Table structure for table `v_skill_error_summary` */
-
-DROP TABLE IF EXISTS `v_skill_error_summary`;
-
-CREATE TABLE `v_skill_error_summary` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
-  `courseware_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '课件编号',
-  `courseware_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '课件名称',
-  `course_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '课程编号',
-  `dept_code` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '院系编号',
-  `step_index` int NOT NULL COMMENT '技能点步骤序号',
-  `total_attempts` int NOT NULL DEFAULT '0' COMMENT '总操作次数',
-  `total_errors` int NOT NULL DEFAULT '0' COMMENT '总错误次数',
-  `error_rate` decimal(5,2) NOT NULL DEFAULT '0.00' COMMENT '错误率(%)',
-  `unique_users` int NOT NULL DEFAULT '0' COMMENT '涉及用户数',
-  `avg_errors_per_user` decimal(5,2) DEFAULT NULL COMMENT '人均错误次数',
-  `stat_date` date NOT NULL COMMENT '统计日期',
-  `refreshed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '刷新时间',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_vses` (`courseware_code`,`step_index`,`stat_date`),
-  KEY `idx_vses_course` (`course_code`),
-  KEY `idx_vses_date` (`stat_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='技能点错误汇总（物化表，每天3:00刷新）';
-
-/*Table structure for table `qa_session_log` */
-
-DROP TABLE IF EXISTS `qa_session_log`;
-
-CREATE TABLE `qa_session_log` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `session_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '会话唯一ID',
-  `user_id` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户 ID',
-  `org_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '机构编号',
-  `question` text COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户原始问题',
-  `intent` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '识别的意图',
-  `complexity` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '复杂度: simple/moderate/complex',
-  `modules_used` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '加载的模块列表 JSON',
-  `steps_count` int DEFAULT '0' COMMENT 'ReAct 推理步骤数',
-  `tools_used` varchar(300) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '调用的工具列表 JSON',
-  `duration_ms` int DEFAULT NULL COMMENT '总耗时（毫秒）',
-  `total_tokens` int DEFAULT NULL COMMENT '消耗 Token 总数',
-  `user_feedback` tinyint DEFAULT NULL COMMENT '1=有帮助 -1=不准确',
-  `fallback_used` tinyint(1) DEFAULT '0' COMMENT '是否使用兜底策略',
-  `asked_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '提问时间',
-  PRIMARY KEY (`id`),
-  KEY `idx_qsl_asked` (`asked_at`),
-  KEY `idx_qsl_intent` (`intent`),
-  KEY `idx_qsl_feedback` (`user_feedback`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 问答会话日志（自我进化机制依赖）';
-
-/* ============================================================
-   Phase 1 AI 数据基础层 — VIEW 定义
-   说明: 权限过滤视图，提供统一的学员/课程查询入口。
-         VIEW 本身不含用户过滤，权限由 Python QueryExecutor 层注入。
-   ============================================================ */
-
-/*View structure for view `v_learner_overview` */
-
-CREATE OR REPLACE VIEW `v_learner_overview` AS
-SELECT
-    u.user_id,
-    u.user_code,
-    u.user_name,
-    u.role_level,
-    u.dept_code,
-    d.dept_name,
-    sc.class_code,
-    cg.class_name,
-    u.position_code,
-    p.position_name,
-    up.gender,
-    up.education,
-    up.job_title,
-    up.last_login_at,
-    d.org_code
-FROM user_info u
-LEFT JOIN department d ON u.dept_code = d.dept_code
-LEFT JOIN student_class sc ON u.user_id = sc.user_id
-LEFT JOIN class_group cg ON sc.class_code = cg.class_code
-LEFT JOIN position p ON u.position_code = p.position_code
-LEFT JOIN user_profile up ON u.user_id = up.user_id
-WHERE u.deleted_at IS NULL;
-
-/*View structure for view `v_course_overview` */
-
-CREATE OR REPLACE VIEW `v_course_overview` AS
-SELECT
-    c.course_code,
-    c.course_name,
-    c.credit,
-    c.study_hours,
-    c.category_code,
-    cc.category_name,
-    c.dept_code,
-    d.dept_name,
-    c.is_published,
-    (SELECT COUNT(*) FROM course_courseware ccw
-     WHERE ccw.course_code = c.course_code) AS courseware_count
-FROM course c
-LEFT JOIN course_category cc ON c.category_code = cc.category_code
-LEFT JOIN department d ON c.dept_code = d.dept_code
-WHERE c.deleted_at IS NULL;
-
-
+/*!50001 CREATE ALGORITHM=UNDEFINED DEFINER=`webapp_user`@`%` SQL SECURITY DEFINER VIEW `v_course_overview` AS select `c`.`course_code` AS `course_code`,`c`.`course_name` AS `course_name`,`c`.`credit` AS `credit`,`c`.`study_hours` AS `study_hours`,`c`.`category_code` AS `category_code`,`cc`.`category_name` AS `category_name`,`c`.`dept_code` AS `dept_code`,`d`.`dept_name` AS `dept_name`,`c`.`is_published` AS `is_published`,(select count(0) from `course_courseware` `ccw` where (`ccw`.`course_code` = `c`.`course_code`)) AS `courseware_count` from ((`course` `c` left join `course_category` `cc` on((`c`.`category_code` = `cc`.`category_code`))) left join `department` `d` on((`c`.`dept_code` = `d`.`dept_code`))) where (`c`.`deleted_at` is null) */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
