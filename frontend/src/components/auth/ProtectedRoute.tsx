@@ -4,8 +4,7 @@ import { useAuthStore } from "../../stores/authStore";
 import type { UserInfo } from "../../types/auth";
 
 export function ProtectedRoute() {
-  const token = localStorage.getItem("access_token");
-  const { user, login, logout } = useAuthStore();
+  const { token, user, login, logout } = useAuthStore();
   const [checking, setChecking] = useState(!user);
 
   useEffect(() => {
