@@ -94,10 +94,51 @@ async def ai_query(
     history = _trim_history(body.history or [], MAX_HISTORY_TURNS, MAX_HISTORY_TOKENS)
 
     async def event_stream():
-        import sys
         import uuid
         start = time.monotonic()
         session_id = uuid.uuid4().hex[:16]
+
+        try:
+            async for chunk in _run_pipeline(
+                request, body, current_user, db, q, history,
+                session_id, start,
+            ):
+                yield chunk
+
+        except asyncio.CancelledError:
+            # Client disconnected — propagate so the ASGI server can
+            # clean up the connection properly; nothing to send.
+            raise
+
+        except Exception as exc:
+            # Catch-all safety net: any unhandled exception anywhere in the
+            # pipeline (intent classification, schema loading, tool registry,
+            # ReAct engine, Excel generation, etc.) lands here instead of
+            # silently terminating the generator and leaving the client
+            # waiting forever with no `done` or `error` event.
+            print(f"[Backend SSE] [FATAL] 未捕获异常: {type(exc).__name__}: {exc}", flush=True)
+            import traceback
+            traceback.print_exc()
+            try:
+                yield format_sse("error", {
+                    "code": "INTERNAL_ERROR",
+                    "message": "系统处理请求时发生未知错误，请稍后重试。",
+                    "recoverable": True,
+                })
+                yield format_sse("done", {
+                    "total_steps": 0,
+                    "duration_ms": int((time.monotonic() - start) * 1000),
+                    "session_id": session_id,
+                })
+            except Exception:
+                # Even the error-reporting itself failed (e.g. connection
+                # already closed) — nothing more we can do.
+                pass
+
+    async def _run_pipeline(
+        request, body, current_user, db, q, history, session_id, start,
+    ):
+        import sys
         modules_used = []
         tools_used = []
         total_steps = 0
@@ -170,6 +211,7 @@ async def ai_query(
                 if intent_result.need_clarification:
                     clarification_q = getattr(intent_result, "clarification_question", None)
                     print(f"[Backend SSE] [3] 意图分类建议澄清: {clarification_q}", flush=True)
+                    classifier.save_unmatched(q, current_user)
                     options = classifier.get_clarification_options(q, current_user)
                     yield format_sse("clarification_options", {
                         "options": [o.model_dump() for o in options],
@@ -179,6 +221,7 @@ async def ai_query(
 
             except ClassificationError:
                 print(f"[Backend SSE] [3] 意图分类失败, 返回澄清选项 (耗时: {(time.monotonic()-t3)*1000:.0f}ms)", flush=True)
+                classifier.save_unmatched(q, current_user)
                 options = classifier.get_clarification_options(q, current_user)
                 yield format_sse("clarification_options", {
                     "options": [o.model_dump() for o in options],
@@ -288,9 +331,11 @@ async def ai_query(
                 async with AsyncSessionLocal() as bg_db:
                     await log_qa_session(
                         bg_db, session_id, current_user.user_id,
-                        current_user.dept_code or "", q,
-                        intent_result.intent, intent_result.complexity,
-                        modules_used, tools_used, total_steps, duration_ms, 0,
+                        dept_code=current_user.dept_code or "", question=q,
+                        intent=intent_result.intent, complexity=intent_result.complexity,
+                        modules_used=modules_used, tools_used=tools_used,
+                        steps_count=total_steps, duration_ms=duration_ms, total_tokens=0,
+                        fallback_used=getattr(engine, "fallback_used", False),
                     )
             except Exception:
                 pass

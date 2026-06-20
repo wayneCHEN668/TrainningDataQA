@@ -39,13 +39,13 @@ async def schema_refresh(
     request: Request,
     current_user: UserContext = Depends(get_current_user),
 ):
-    """Manual schema cache refresh (admin only).
+    """Manual schema cache refresh.
     
-    Requires admin role (role_level <= 1) to prevent unauthorized cache invalidation
+    Requires role_level <= 2 to prevent unauthorized cache invalidation
     which could cause cache stampede under high concurrency.
     """
-    if current_user.role_level > 1:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if current_user.role_level > 2:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     svc: SchemaIndexService = request.app.state.schema_svc
     await svc.refresh()
     return {"status": "refreshed"}

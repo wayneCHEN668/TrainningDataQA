@@ -148,11 +148,13 @@ class ExcelGenerator:
         return self.FIELD_LABEL_MAP.get(field, field)
 
     def _derive_title(self, question: str) -> str:
-        """从用户问题中提取报表标题"""
+        """从用户问题中提取报表标题，过滤文件系统非法字符"""
         noise = r"(帮我|请|生成|一个|一份|导出|下载|报表|Excel|excel|数据|的|吗|吧|一下)"
         cleaned = re.sub(noise, "", question).strip()
         if not cleaned:
             cleaned = "数据报表"
+        # 过滤文件系统非法字符 (Windows: / \ : * ? " < > |)
+        cleaned = re.sub(r'[/\\:*?"<>|]', '_', cleaned)
         return cleaned[:50]
 
     def _write_sheet(

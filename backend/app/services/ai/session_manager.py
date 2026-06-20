@@ -15,7 +15,7 @@ async def log_qa_session(
     db: AsyncSession,
     session_id: str,
     user_id: str,
-    org_code: str,
+    dept_code: str,
     question: str,
     intent: str | None,
     complexity: str | None,
@@ -24,6 +24,7 @@ async def log_qa_session(
     steps_count: int,
     duration_ms: int,
     total_tokens: int,
+    fallback_used: bool = False,
 ) -> None:
     """Record qa_session_log entry. Fire-and-forget, never raise."""
     try:
@@ -31,15 +32,17 @@ async def log_qa_session(
             text("""
                 INSERT INTO qa_session_log
                     (session_id, user_id, org_code, question, intent, complexity,
-                     modules_used, steps_count, tools_used, duration_ms, total_tokens)
+                     modules_used, steps_count, tools_used, duration_ms, total_tokens,
+                     fallback_used)
                 VALUES
-                    (:sid, :uid, :org, :q, :intent, :comp,
-                     :mods, :steps, :tools, :dur, :tokens)
+                    (:sid, :uid, :dept, :q, :intent, :comp,
+                     :mods, :steps, :tools, :dur, :tokens,
+                     :fallback)
             """),
             {
                 "sid": session_id,
                 "uid": user_id,
-                "org": org_code,
+                "dept": dept_code,
                 "q": question,
                 "intent": intent,
                 "comp": complexity,
@@ -48,6 +51,7 @@ async def log_qa_session(
                 "tools": json.dumps(tools_used, ensure_ascii=False),
                 "dur": duration_ms,
                 "tokens": total_tokens,
+                "fallback": 1 if fallback_used else 0,
             },
         )
         await db.commit()

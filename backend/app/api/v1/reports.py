@@ -1,8 +1,10 @@
 """下载端点 — 提供已生成的报表文件下载"""
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from app.api.deps import get_current_user
 from app.core.config import settings
+from app.schemas.auth import UserContext
 
 router = APIRouter()
 
@@ -10,6 +12,7 @@ router = APIRouter()
 @router.get("/reports/{file_name}")
 async def download_report(
     file_name: str,
+    current_user: UserContext = Depends(get_current_user),
     display_name: str = Query(default="", description="Human-readable filename for browser download dialog"),
 ):
     """下载之前生成的报表文件。文件在 REPORT_TTL_HOURS 后自动清理。"""

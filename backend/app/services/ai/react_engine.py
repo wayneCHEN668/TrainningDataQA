@@ -195,6 +195,7 @@ class ReactEngine:
         self._user_ctx = user_ctx
         self._history = chat_history or []
         self._schema_svc = schema_svc
+        self.fallback_used: bool = False
 
     @staticmethod
     async def _stream_with_timeout(stream, timeout: float = DEFAULT_LLM_TIMEOUT) -> str:
@@ -350,7 +351,8 @@ class ReactEngine:
             fallback = _extract_final_answer_from_buffer(answer_buffer)
 
             if fallback and len(fallback.strip()) > 10:
-                print(f"[ReactEngine] 从缓冲区提取回答文本 ({len(fallback)} 字符)", flush=True)
+                self.fallback_used = True
+                print(f"[ReactEngine] 从缓冲区提取回答文本 ({len(fallback)} 字符) [FALLBACK]", flush=True)
                 yield SSEEvent(
                     type="answer_chunk",
                     data={"text_delta": fallback}
