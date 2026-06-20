@@ -21,7 +21,6 @@ def upgrade() -> None:
         sa.Column("session_name", sa.String(200), nullable=True),
         sa.Column("open_at", sa.DateTime(), nullable=True),
         sa.Column("close_at", sa.DateTime(), nullable=True),
-        sa.Column("org_code", sa.String(30), nullable=True),
         sa.Column("linked_course_code", sa.String(30), nullable=True),
         sa.Column("user_code", sa.String(30), nullable=False),
         sa.Column("user_id", sa.String(50), nullable=True),
@@ -41,8 +40,8 @@ def upgrade() -> None:
     )
     op.create_index("idx_vea_session", "v_exam_analysis", ["exam_session_code"])
     op.create_index("idx_vea_user", "v_exam_analysis", ["user_code"])
-    op.create_index("idx_vea_org", "v_exam_analysis", ["org_code"])
     op.create_index("idx_vea_course", "v_exam_analysis", ["linked_course_code"])
+    op.create_index("idx_vea_open_at", "v_exam_analysis", ["open_at"])
 
 
 def downgrade() -> None:

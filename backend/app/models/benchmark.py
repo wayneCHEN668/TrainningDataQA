@@ -88,7 +88,6 @@ class ExamAnalysis(Base, TimestampMixin):
     session_name: Mapped[str | None] = mapped_column(String(200))
     open_at: Mapped[datetime | None] = mapped_column(DateTime)
     close_at: Mapped[datetime | None] = mapped_column(DateTime)
-    org_code: Mapped[str | None] = mapped_column(String(30))
     linked_course_code: Mapped[str | None] = mapped_column(String(30))
     user_code: Mapped[str] = mapped_column(String(30))
     user_id: Mapped[str | None] = mapped_column(String(50))

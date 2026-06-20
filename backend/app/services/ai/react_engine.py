@@ -79,6 +79,12 @@ Final Answer: [用中文自然语言回答，包含数据和图表]
 
 **重要**：最终回答正文前必须包含 "Final Answer:" 前缀标记，不得省略。如果省略该标记，系统将无法识别你的回答并丢弃全部内容。
 
+**严禁在同一轮输出中编造 Observation 或 Final Answer**：
+- 如果你输出了 Action，必须在此停止输出，等待系统返回真实的 Observation 后再继续推理。
+- 绝不允许 "Action:" 和 "Final Answer:" 同时出现在同一轮输出中——系统会检测并拒绝此类输出。
+- Observation 只能由系统注入，你绝不能自己编写 Observation 内容。
+- 违反此规则的输出将被系统丢弃 Final Answer，强制重新执行工具调用。
+
 ## 回答格式要求
 1. **数据解读**：用中文自然语言解释查询到的数据，说明关键数字的含义和趋势
 2. **文本优先**：即使生成了图表，也必须提供文字形式的答案。图表是文字的补充，不能替代文字
@@ -166,6 +172,97 @@ def _find_final_answer(text: str) -> str | None:
 
     content = text[best_idx + best_marker_len:].lstrip()
     return _cut_at_react_marker(content).strip() or None
+
+
+def _has_action_before_final_answer(text: str) -> bool:
+    """Detect if LLM output contains an Action: marker appearing before any Final Answer: marker.
+
+    Returns True when the LLM has fabricated a complete ReAct trajectory
+    (Action → Observation → Final Answer) in a single output round.
+    In this case, the Final Answer must NOT be trusted — it's based on
+    hallucinated tool results, not real execution.
+
+    This is the core P0 defense against LLM trajectory fabrication:
+    the ReAct loop's if/elif structure treats "Final Answer" and "Action" as
+    mutually exclusive, but the LLM can output both in the same text.
+    When that happens, the Final Answer is always hallucinated because
+    no real tool was executed between the Action and the Final Answer.
+    """
+    # Find Action: position using the same regex as the main Action parser
+    action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", text, re.IGNORECASE)
+    if not action_match:
+        return False
+
+    action_pos = action_match.start()
+
+    # Find earliest Final Answer: position (using the same marker list as _find_final_answer)
+    lower = text.lower()
+    fa_pos = -1
+    for marker in _FA_MARKERS:
+        idx = lower.find(marker)
+        if idx != -1 and (fa_pos == -1 or idx < fa_pos):
+            fa_pos = idx
+
+    if fa_pos == -1:
+        return False  # No Final Answer at all — normal Action-only output
+
+    # Action appears before Final Answer → fabricated trajectory
+    return action_pos < fa_pos
+
+
+def _truncate_at_action_input(text: str) -> str:
+    """Truncate fabricated trajectory at Action Input boundary.
+
+    When LLM fabricates Action+Observation+Final Answer in one output,
+    keep only the valid parts (Thought + Action + Action Input JSON)
+    and discard the hallucinated Observation and Final Answer that follow.
+    This ensures the fabricated content doesn't pollute answer_buffer
+    or message history, preventing it from being surfaced to the user
+    or confusing the LLM in subsequent rounds.
+    """
+    marker_match = re.search(r"Action\s*Input\s*[:：]\s*", text, re.IGNORECASE)
+    if not marker_match:
+        # No Action Input — truncate at end of Action line
+        action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", text, re.IGNORECASE)
+        if action_match:
+            newline_pos = text.find("\n", action_match.start())
+            return text[:newline_pos] if newline_pos != -1 else text
+        return text
+
+    pos = marker_match.end()
+    while pos < len(text) and text[pos] not in "{[":
+        pos += 1
+    if pos >= len(text):
+        return text[:marker_match.end()]
+
+    # Bracket-matching to find the end of the Action Input JSON
+    opening = text[pos]
+    closing = "}" if opening == "{" else "]"
+    depth = 0
+    in_string = False
+    escape = False
+
+    while pos < len(text):
+        ch = text[pos]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == opening:
+                depth += 1
+            elif ch == closing:
+                depth -= 1
+                if depth == 0:
+                    return text[:pos + 1]
+        pos += 1
+
+    return text[:marker_match.end()]
 
 
 def _cut_at_react_marker(text: str) -> str:
@@ -270,13 +367,33 @@ class ReactEngine:
                         return
                     await asyncio.sleep(2 ** retries)
 
-            # ── Check for Final Answer（用 str.find 替代正则，消除 ReDoS）────
+            # ── P0 Defense: Detect fabricated trajectory (Action before Final Answer) ──
             print(f"[ReactEngine] step={step_no}, parsing llm_output ({len(llm_output)} chars): {llm_output[:200]}", flush=True)
-            final_text = _find_final_answer(llm_output) or ""
-            if final_text:
-                yield SSEEvent(type="answer_chunk", data={"text_delta": "\n" + final_text})
-                answer_buffer += "\n" + final_text
-                break
+            if _has_action_before_final_answer(llm_output):
+                # LLM fabricated Action+Observation+Final Answer in one output.
+                # The Final Answer is hallucinated (no real tool was executed).
+                # Reject it, truncate the fabricated parts, and force real tool execution.
+                fabricated_preview = (_find_final_answer(llm_output) or "")[:100]
+                logger.warning(
+                    "[ReactEngine] P0 DEFENSE: LLM fabricated complete trajectory "
+                    "(Action+Observation+Final Answer in single output at step=%d). "
+                    "Rejecting Final Answer, forcing real tool execution. "
+                    "Fabricated answer preview: %s",
+                    step_no, fabricated_preview,
+                )
+                # Strip fabricated Observation+Final Answer from buffer and llm_output
+                truncated = _truncate_at_action_input(llm_output)
+                if answer_buffer.endswith(llm_output):
+                    answer_buffer = answer_buffer[:-len(llm_output)] + truncated
+                llm_output = truncated
+                # Fall through to Action parsing — do NOT trust the fabricated Final Answer
+            else:
+                # ── Check for Final Answer（safe — no unexecuted Action before it）────
+                final_text = _find_final_answer(llm_output) or ""
+                if final_text:
+                    yield SSEEvent(type="answer_chunk", data={"text_delta": "\n" + final_text})
+                    answer_buffer += "\n" + final_text
+                    break
 
             # ── Parse Action ─────────────────────────────────────────────────
             action_match = re.search(r"Action:\s*([a-zA-Z_][a-zA-Z0-9_]*)", llm_output)

@@ -117,11 +117,11 @@ async def refresh_exam_analysis() -> None:
     """每小时 15 分：增量刷新考试分析宽表。"""
     sql = """
         INSERT INTO v_exam_analysis
-            (exam_session_code, session_name, org_code, linked_course_code,
+            (exam_session_code, session_name, linked_course_code,
              user_code, user_id, dept_code,
              attempt_number, total_score, is_passed, is_graded, submitted_at)
         SELECT
-            es.exam_session_code, es.session_name, es.org_code, es.linked_course_code,
+            es.exam_session_code, es.session_name, es.linked_course_code,
             ee.user_code, ui.user_id, ui.dept_code,
             ee.attempt_number, ee.total_score,
             CASE WHEN ee.total_score >= 60 THEN 1 ELSE 0 END,
